@@ -28,16 +28,20 @@ export default function HomeScreen({ onNavigate }) {
           <span className="feature-btn-arrow">›</span>
         </button>
 
-        {/* ── Slalom Course (coming soon) ───────────────────── */}
-        <button className="feature-btn feature-btn--soon" disabled>
+        {/* ── Survey Slalom Course ──────────────────────────────── */}
+        <button
+          id="btn-feature-slalom"
+          className="feature-btn"
+          onClick={() => onNavigate('slalom')}
+        >
           <span className="feature-btn-icon">🏁</span>
           <div className="feature-btn-body">
-            <span className="feature-btn-title">Slalom Course</span>
+            <span className="feature-btn-title">Survey Slalom Course</span>
             <span className="feature-btn-desc">
-              Mark gates and measure a slalom layout
+              Measure all 26 buoys against IWWF tolerances
             </span>
           </div>
-          <span className="feature-btn-badge">Soon</span>
+          <span className="feature-btn-arrow">›</span>
         </button>
 
         {/* ── Sweep Area (coming soon) ──────────────────────── */}
