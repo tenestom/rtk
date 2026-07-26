@@ -20,6 +20,7 @@
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
+#include "DFRobot_RTK_LoRa.h"
 
 // ── WiFi Access Point credentials ────────────────────────────────────────────
 static const char* WIFI_SSID     = "RTK-Tracker";
@@ -38,6 +39,10 @@ struct GpsData {
   uint8_t bat  = 0;
 };
 GpsData gps;
+
+// ── RTK LoRa module ──────────────────────────────────────────────────────────
+DFRobot_RTK_LoRa_UART rtk(&Serial1, 115200, 16, 17);
+String nmeaBuffer = "";
 
 // ── Timing ────────────────────────────────────────────────────────────────────
 static uint32_t lastBroadcast = 0;
@@ -365,6 +370,53 @@ connect();
 )rawliteral";
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  NMEA GNGGA sentence parser — populates the global gps struct
+// ─────────────────────────────────────────────────────────────────────────────
+void parseGNGGA(String sentence) {
+  int field = 0;
+  String fields[15];
+  for (int i = 0; i < sentence.length(); i++) {
+    if (sentence[i] == ',' || sentence[i] == '*') {
+      field++;
+    } else {
+      if (field < 15) fields[field] += sentence[i];
+    }
+  }
+  if (fields[0] != "$GNGGA") return;
+  if (fields[2].length() > 0) {
+    float rawLat = fields[2].toFloat();
+    int deg = (int)(rawLat / 100);
+    float min = rawLat - deg * 100;
+    gps.lat = deg + min / 60.0;
+    if (fields[3] == "S") gps.lat = -gps.lat;
+  }
+  if (fields[4].length() > 0) {
+    float rawLon = fields[4].toFloat();
+    int deg = (int)(rawLon / 100);
+    float min = rawLon - deg * 100;
+    gps.lon = deg + min / 60.0;
+    if (fields[5] == "W") gps.lon = -gps.lon;
+  }
+  gps.fix  = fields[6].toInt();
+  gps.sats = fields[7].toInt();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RTK LoRa data callback — called by rtk.getAllGnss() with raw NMEA bytes
+// ─────────────────────────────────────────────────────────────────────────────
+void rtkCallback(char* data, uint8_t len) {
+  for (uint8_t i = 0; i < len; i++) {
+    char c = data[i];
+    if (c == '\n') {
+      parseGNGGA(nmeaBuffer);
+      nmeaBuffer = "";
+    } else {
+      nmeaBuffer += c;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  WebSocket event handler
 // ─────────────────────────────────────────────────────────────────────────────
 void onWsEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length) {
@@ -397,35 +449,20 @@ void broadcastGps() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Read GPS — replace with your real GPS library calls
+//  readGps() — intentionally empty; GPS is read continuously via rtkCallback
 // ─────────────────────────────────────────────────────────────────────────────
 void readGps() {
-  // ── Replace this block with your GPS library ─────────────────────────────
-  // Example using TinyGPS++:
-  //   while (gpsSerial.available()) gpsParser.encode(gpsSerial.read());
-  //   if (gpsParser.location.isUpdated()) {
-  //     gps.lat  = gpsParser.location.lat();
-  //     gps.lon  = gpsParser.location.lng();
-  //     gps.fix  = ...; // NMEA GGA fix quality field
-  //     gps.sats = gpsParser.satellites.value();
-  //   }
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // Placeholder — remove when integrating real GPS
-  gps.lat  = 55.6647000;
-  gps.lon  = 13.0773600;
-  gps.fix  = 4;
-  gps.sats = 31;
-  gps.bat  = 87;
+  // intentionally empty - GPS is read continuously in loop()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Read battery percentage — adjust pin / voltage divider for your hardware
+//  Read battery percentage from ADC on GPIO35 (2× voltage divider assumed)
 // ─────────────────────────────────────────────────────────────────────────────
 void readBattery() {
-  // Example: 100k/100k divider on GPIO34, 3.7 V LiPo (3.0–4.2 V)
-  // const float v   = analogRead(34) * (3.3f / 4095.0f) * 2.0f;
-  // gps.bat = (uint8_t)constrain((v - 3.0f) / (4.2f - 3.0f) * 100.0f, 0, 100);
+  int raw = analogRead(35);
+  float voltage = raw / 4095.0 * 3.3 * 2.0;
+  float percent = (voltage - 3.5) / (4.2 - 3.5) * 100.0;
+  gps.bat = (uint8_t)constrain(percent, 0, 100);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -441,6 +478,15 @@ void setup() {
   WiFi.softAP(WIFI_SSID, strlen(WIFI_PASSWORD) ? WIFI_PASSWORD : nullptr);
   Serial.printf("[WiFi] AP \"%s\" up — http://%s\n",
                 WIFI_SSID, WiFi.softAPIP().toString().c_str());
+
+  // ── RTK LoRa module ───────────────────────────────────────────────────────
+  while (!rtk.begin()) {
+    Serial.println("NO Devices!");
+    delay(1000);
+  }
+  rtk.setModule(module_lora);
+  rtk.setCallback(rtkCallback);
+  Serial.println("[RTK] Module ready");
 
   // ── HTTP server (port 80) ──────────────────────────────────────────────────
   // Serve the embedded page for every request (single-page app).
@@ -468,11 +514,11 @@ void setup() {
 void loop() {
   httpServer.handleClient();
   wsServer.loop();
+  rtk.getAllGnss();
 
   uint32_t now = millis();
   if (now - lastBroadcast >= BROADCAST_INTERVAL_MS) {
     lastBroadcast = now;
-    readGps();
     readBattery();
     broadcastGps();
   }
