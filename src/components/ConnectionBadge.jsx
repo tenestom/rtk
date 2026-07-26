@@ -1,8 +1,9 @@
 export default function ConnectionBadge({ status }) {
   const map = {
-    connected:    { label: 'Connected',    cls: 'badge-connected' },
-    connecting:   { label: 'Connecting…', cls: 'badge-connecting' },
-    disconnected: { label: 'Disconnected', cls: 'badge-disconnected' },
+    connected:      { label: 'Connected',     cls: 'badge-connected' },
+    connecting:     { label: 'Connecting…',  cls: 'badge-connecting' },
+    disconnected:   { label: 'Disconnected',  cls: 'badge-disconnected' },
+    'https-blocked':{ label: 'HTTPS — no WS', cls: 'badge-disconnected' },
   };
   const { label, cls } = map[status] ?? map.disconnected;
 

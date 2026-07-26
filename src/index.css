@@ -388,6 +388,78 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* ── Mixed-Content Banner ────────────────────────────────────────── */
+.mixed-content-banner {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 12px 16px 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mcb-icon-wrap {
+  flex-shrink: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  margin-top: 2px;
+}
+
+.mcb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcb-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--amber);
+  letter-spacing: 0.1px;
+}
+
+.mcb-text {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.mcb-text strong { color: var(--text); font-weight: 600; }
+
+.mcb-link {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #60a5fa;
+  text-decoration: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.08);
+  letter-spacing: 0.2px;
+  transition: background 0.2s, border-color 0.2s;
+  align-self: flex-start;
+}
+
+.mcb-link:hover, .mcb-link:active {
+  background: rgba(96, 165, 250, 0.18);
+  border-color: rgba(96, 165, 250, 0.7);
+}
+
+.mcb-hint {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 /* ── Responsive tweaks ───────────────────────────────────────────── */
 @media (min-width: 480px) {
   .dashboard { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }

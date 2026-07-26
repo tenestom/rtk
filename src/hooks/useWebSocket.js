@@ -4,8 +4,12 @@ const WS_URL = 'ws://192.168.4.1:81';
 const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 10000;
 
+// Browsers block ws:// connections from https:// pages (mixed content).
+// Detect this early so we never attempt a doomed connection.
+export const IS_HTTPS = typeof window !== 'undefined' && window.location.protocol === 'https:';
+
 export function useWebSocket() {
-  const [status, setStatus] = useState('disconnected'); // 'connecting' | 'connected' | 'disconnected'
+  const [status, setStatus] = useState(IS_HTTPS ? 'https-blocked' : 'disconnected');
   const [data, setData] = useState(null);
   const wsRef = useRef(null);
   const retryTimerRef = useRef(null);
@@ -14,6 +18,8 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     if (!mountedRef.current) return;
+    // Never attempt a ws:// connection from an https:// page.
+    if (IS_HTTPS) return;
 
     setStatus('connecting');
 

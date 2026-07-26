@@ -3,6 +3,7 @@ import CoordinatesCard from './CoordinatesCard';
 import FixQualityCard from './FixQualityCard';
 import SatelliteCard from './SatelliteCard';
 import BatteryIndicator from './BatteryIndicator';
+import MixedContentBanner from './MixedContentBanner';
 import { useWebSocket } from '../hooks/useWebSocket';
 
 export default function GpsDashboard() {
@@ -22,6 +23,9 @@ export default function GpsDashboard() {
         <ConnectionBadge status={status} />
       </header>
 
+      {/* HTTPS mixed-content warning */}
+      <MixedContentBanner />
+
       {/* Main content */}
       <main className="dashboard-main">
         {/* Coordinates — full width */}
@@ -39,7 +43,9 @@ export default function GpsDashboard() {
 
       {/* Footer timestamp */}
       <footer className="dashboard-footer">
-        {data
+        {status === 'https-blocked'
+          ? 'Open http://192.168.4.1 on the RTK network for live data'
+          : data
           ? `Last update: ${new Date().toLocaleTimeString()}`
           : status === 'connecting'
           ? 'Connecting to ws://192.168.4.1:81 …'

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:esp32": "vite build && node -e \"const fs=require('fs');const path=require('path');const src='dist';const dst='esp32/data';fs.rmSync(dst,{recursive:true,force:true});fs.cpSync(src,dst,{recursive:true});console.log('Copied dist → esp32/data');\"",
     "lint": "oxlint",
     "preview": "vite preview"
   },
