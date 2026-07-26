@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
   plugins: [
@@ -56,5 +57,15 @@ export default defineConfig({
         ],
       },
     }),
+    // Must be last — inlines all JS and CSS into index.html
+    // so the built file is completely self-contained (no external chunks).
+    // This is what lets us embed the full app in ESP32 PROGMEM.
+    viteSingleFile({ removeViteModuleLoader: true }),
   ],
+  build: {
+    // Ensure assets below any size are inlined (singlefile handles the rest)
+    assetsInlineLimit: 100_000_000,
+    // Keep a single chunk; singlefile will inline it anyway
+    cssCodeSplit: false,
+  },
 });
