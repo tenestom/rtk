@@ -44,16 +44,20 @@ export default function HomeScreen({ onNavigate }) {
           <span className="feature-btn-arrow">›</span>
         </button>
 
-        {/* ── Sweep Area (coming soon) ──────────────────────── */}
-        <button className="feature-btn feature-btn--soon" disabled>
+        {/* ── Sweep Area ─────────────────────────────────────────── */}
+        <button
+          id="btn-feature-sweep"
+          className="feature-btn"
+          onClick={() => onNavigate('sweep')}
+        >
           <span className="feature-btn-icon">🗺️</span>
           <div className="feature-btn-body">
             <span className="feature-btn-title">Sweep Area</span>
             <span className="feature-btn-desc">
-              Walk a perimeter and calculate the enclosed area
+              Define a polygon and paint coverage as you move through it
             </span>
           </div>
-          <span className="feature-btn-badge">Soon</span>
+          <span className="feature-btn-arrow">›</span>
         </button>
 
       </div>

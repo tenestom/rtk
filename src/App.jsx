@@ -6,6 +6,7 @@ import MixedContentBanner from './components/MixedContentBanner';
 import HomeScreen from './components/HomeScreen';
 import DistanceMeasure from './components/DistanceMeasure';
 import SlalomSurvey from './components/SlalomSurvey';
+import SweepScreen from './components/SweepScreen';
 
 /**
  * Root component.
@@ -38,6 +39,12 @@ function App() {
         )}
         {screen === 'slalom' && (
           <SlalomSurvey
+            data={data}
+            onBack={() => setScreen('home')}
+          />
+        )}
+        {screen === 'sweep' && (
+          <SweepScreen
             data={data}
             onBack={() => setScreen('home')}
           />
