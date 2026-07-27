@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  BUOY_DEFS, BUOY_BY_ID,
-  buildCourseTransform, computeStatus, formatError,
+  BUOY_DEFS, BUOY_BY_ID, IWWF_DIM_DEFS,
+  buildCourseTransform, computeStatus, formatError, computeMeasuredDimensions,
 } from '../utils/slalom.js';
 import { haversine } from '../utils/geo.js';
 import SlalomSchematic from './SlalomSchematic.jsx';
@@ -516,38 +516,42 @@ export default function SlalomSurvey({ data, onBack }) {
 
           {/* ══ RESULTS TAB ══════════════════════════════════════════════ */}
           {tab === 'results' && (
-            <div className="results-list">
+            <div className="results-scroll">
+              <DimensionsPanel measured={measured} />
+              <div className="rl-section-heading">Per-buoy GPS error</div>
               {!canCompute && (
                 <div className="results-no-refs">
                   <span className="rno-icon">⚠️</span>
-                  <p>Measure pos ref (buoy {posRefId}) and angle ref (buoy {angleRefId}) to see results.</p>
+                  <p>Measure pos ref (buoy {posRefId}) and angle ref (buoy {angleRefId}) to compute theoretical positions.</p>
                 </div>
               )}
-              {BUOY_DEFS.map(b => {
-                const m = measured[b.id], st = statuses[b.id];
-                if (!m) return (
-                  <div key={b.id} className="rl-row rl-row--unmeasured">
-                    <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
-                    <span className="rl-name">{b.name}</span>
-                    <span className="rl-pending">—</span>
-                  </div>
-                );
-                return (
-                  <div key={b.id} className="rl-row"
-                    style={{ borderLeft: `3px solid ${st ? STATUS_COLOR[st.status] : '#334155'}` }}>
-                    <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
-                    <span className="rl-name">{b.name}</span>
-                    <span className="rl-tol">±{(b.tol*100).toFixed(0)}cm</span>
-                    {st ? (
-                      <span className="rl-error" style={{ color: STATUS_COLOR[st.status] }}>
-                        {formatError(st.error)}
-                      </span>
-                    ) : (
-                      <span className="rl-pending">no refs</span>
-                    )}
-                  </div>
-                );
-              })}
+              <div className="results-list">
+                {BUOY_DEFS.map(b => {
+                  const m = measured[b.id], st = statuses[b.id];
+                  if (!m) return (
+                    <div key={b.id} className="rl-row rl-row--unmeasured">
+                      <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
+                      <span className="rl-name">{b.name}</span>
+                      <span className="rl-pending">—</span>
+                    </div>
+                  );
+                  return (
+                    <div key={b.id} className="rl-row"
+                      style={{ borderLeft: `3px solid ${st ? STATUS_COLOR[st.status] : '#334155'}` }}>
+                      <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
+                      <span className="rl-name">{b.name}</span>
+                      <span className="rl-tol">±{(b.tol*100).toFixed(0)}cm</span>
+                      {st ? (
+                        <span className="rl-error" style={{ color: STATUS_COLOR[st.status] }}>
+                          {formatError(st.error)}
+                        </span>
+                      ) : (
+                        <span className="rl-pending">no refs</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -649,6 +653,98 @@ function SavedResultsList({ statuses }) {
             <span className="rl-error" style={{ color: STATUS_COLOR_L[st.status] }}>
               {formatError(st.error)}
             </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── DimensionsPanel ───────────────────────────────────────────────────
+/**
+ * Shows all 8 official IWWF dimensions in a table.
+ * Visible from the start; measured values fill in as buoys are surveyed.
+ */
+const DIM_STATUS_COLOR = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
+
+function DimensionsPanel({ measured }) {
+  const dims = useMemo(() => computeMeasuredDimensions(measured), [measured]);
+
+  function dimStatus(measured_val, tol) {
+    if (measured_val == null) return null;
+    // We compare to spec via IWWF_DIM_DEFS lookup
+    // (caller passes spec so we don't need it here — see row render below)
+    return null; // computed per-row
+  }
+
+  return (
+    <div className="dim-panel">
+      <div className="dim-panel-header">
+        <span className="dim-ph-title">IWWF Dimensions</span>
+        <span className="dim-ph-sub">Official spec vs measured</span>
+      </div>
+
+      {/* Column headers */}
+      <div className="dim-col-heads">
+        <span className="dch-dim">Dim</span>
+        <span className="dch-spec">Spec</span>
+        <span className="dch-tol">Tol</span>
+        <span className="dch-meas">Measured</span>
+        <span className="dch-err">Error</span>
+      </div>
+
+      {IWWF_DIM_DEFS.map(def => {
+        const instances = dims[def.key] ?? [];
+        const hasMeas   = instances.length > 0;
+
+        // Summary: average of all instances
+        const avg = hasMeas
+          ? instances.reduce((s, x) => s + x.value, 0) / instances.length
+          : null;
+
+        const avgErr   = avg != null ? Math.abs(avg - def.spec) : null;
+        const avgStatus = avgErr != null
+          ? (avgErr < def.tol * 0.8 ? 'ok' : avgErr < def.tol ? 'warn' : 'bad')
+          : null;
+
+        return (
+          <div key={def.key} className="dim-group">
+            {/* Summary row */}
+            <div className={`dim-row dim-row--summary${hasMeas ? ' dim-row--measured' : ''}`}
+              style={avgStatus ? { borderLeftColor: DIM_STATUS_COLOR[avgStatus] } : {}}>
+              <span className="dr-dim">{def.key}</span>
+              <span className="dr-spec">{def.spec >= 10 ? def.spec.toFixed(1) : def.spec.toFixed(3)} m</span>
+              <span className="dr-tol">{def.tolPct}</span>
+              <span className="dr-meas">
+                {avg != null ? `${avg.toFixed(3)} m` : '—'}
+                {instances.length > 1 && (
+                  <span className="dr-count"> ×{instances.length}</span>
+                )}
+              </span>
+              <span className="dr-err"
+                style={avgStatus ? { color: DIM_STATUS_COLOR[avgStatus] } : {}}>
+                {avgErr != null ? formatError(avgErr) : ''}
+              </span>
+            </div>
+
+            {/* Per-instance sub-rows (when > 1 instance) */}
+            {instances.length > 1 && instances.map((inst, i) => {
+              const err = Math.abs(inst.value - def.spec);
+              const st  = err < def.tol * 0.8 ? 'ok' : err < def.tol ? 'warn' : 'bad';
+              return (
+                <div key={i} className="dim-row dim-row--instance">
+                  <span className="dr-dim-inst" />
+                  <span className="dr-label-inst">{inst.label}</span>
+                  <span className="dr-meas-inst">{inst.value.toFixed(3)} m</span>
+                  <span className="dr-err-inst" style={{ color: DIM_STATUS_COLOR[st] }}>
+                    {formatError(err)}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* Description */}
+            <div className="dim-detail">{def.label.replace(/^. — /, '')} — {def.detail}</div>
           </div>
         );
       })}

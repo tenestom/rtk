@@ -276,3 +276,177 @@ export function formatError(meters) {
   if (meters < 0.01) return `${(meters * 1000).toFixed(0)} mm`;
   return `${(meters * 100).toFixed(1)} cm`;
 }
+
+// ── IWWF dimension catalog ────────────────────────────────────────────
+/**
+ * Human-readable definitions of all official IWWF dimensions.
+ * Used to populate the "Dimensions" table in the Results tab.
+ */
+export const IWWF_DIM_DEFS = [
+  {
+    key: 'E', spec: IWWF.E, tol: IWWF.TOL_E,
+    label: 'E — Gate half-width',
+    detail: 'Centre line → gate buoy (entry & exit)',
+    tolPct: '±5%',
+  },
+  {
+    key: 'G', spec: IWWF.G, tol: IWWF.TOL_G,
+    label: 'G — Guide half-width',
+    detail: 'Centre line → boat guide buoy (6 pairs)',
+    tolPct: '±10%',
+  },
+  {
+    key: 'A', spec: IWWF.A, tol: IWWF.TOL_A,
+    label: 'A — Gate → guide 1',
+    detail: 'Entry/exit gate to first/last boat guide',
+    tolPct: '±0.5%',
+  },
+  {
+    key: 'B', spec: IWWF.B, tol: IWWF.TOL_B,
+    label: 'B — Guide spacing',
+    detail: 'Between consecutive boat guide pairs (5 gaps)',
+    tolPct: '±0.5%',
+  },
+  {
+    key: 'C', spec: IWWF.C, tol: IWWF.TOL_C,
+    label: 'C — Gate → skier 1 ∠',
+    detail: 'Diagonal: gate buoy → first skier buoy',
+    tolPct: '±0.5%',
+  },
+  {
+    key: 'D', spec: IWWF.D, tol: IWWF.TOL_D,
+    label: 'D — Skier → skier ∠',
+    detail: 'Diagonal: consecutive skier buoys (5 pairs)',
+    tolPct: '±0.5%',
+  },
+  {
+    key: 'F', spec: IWWF.F, tol: IWWF.TOL_F,
+    label: 'F — Skier lateral',
+    detail: 'Centre line → skier buoy (derived from D & B)',
+    tolPct: '±1%',
+  },
+  {
+    key: 'H', spec: IWWF.H, tol: IWWF.TOL_H,
+    label: 'H — Pre-gate distance',
+    detail: 'Gate → pre-gate buoy (all 4 corners)',
+    tolPct: '±0.5%',
+  },
+];
+
+// ── Compute measured values for each IWWF dimension ───────────────────
+/**
+ * Given a `measured` object {[buoyId]: {lat, lon}}, compute the actual
+ * GPS-measured value for each IWWF dimension.
+ *
+ * For dimensions that have multiple instances (e.g. B has 5 guide gaps),
+ * each instance is returned separately so the UI can show all of them.
+ *
+ * @param {{ [id: number]: { lat: number, lon: number } }} measured
+ * @returns {{ [key: string]: Array<{ label: string, value: number }> }}
+ */
+export function computeMeasuredDimensions(measured) {
+  // Shorthand: Haversine between two measured buoys (null if either missing)
+  const hav = (a, b) => {
+    const pa = measured[a], pb = measured[b];
+    if (!pa || !pb) return null;
+    return haversine(pa.lat, pa.lon, pb.lat, pb.lon);
+  };
+
+  // Midpoint of two measured buoys (null if either missing)
+  const mid = (a, b) => {
+    const pa = measured[a], pb = measured[b];
+    if (!pa || !pb) return null;
+    return { lat: (pa.lat + pb.lat) / 2, lon: (pa.lon + pb.lon) / 2 };
+  };
+
+  // Haversine between two midpoints (null if either is null)
+  const havMid = (m1, m2) => {
+    if (!m1 || !m2) return null;
+    return haversine(m1.lat, m1.lon, m2.lat, m2.lon);
+  };
+
+  // ── E: gate half-width ────────────────────────────────────────────────
+  // dist(gate_R, gate_L) = 2E  →  measured E = dist / 2
+  const E_vals = [
+    { label: 'Entry (1↔2)',    value: hav(1,2)     !== null ? hav(1,2)     / 2 : null },
+    { label: 'Exit (23↔24)',   value: hav(23,24)   !== null ? hav(23,24)   / 2 : null },
+  ];
+
+  // ── G: boat guide half-width ─────────────────────────────────────────
+  // dist(guide_R, guide_L) = 2G  →  measured G = dist / 2
+  const G_vals = [
+    [11,12,'G1'],[13,14,'G2'],[15,16,'G3'],[17,18,'G4'],[19,20,'G5'],[21,22,'G6'],
+  ].map(([r,l,n]) => ({ label: `Guide ${n} (${r}↔${l})`, value: hav(r,l) !== null ? hav(r,l)/2 : null }));
+
+  // ── A: gate → first/last boat guide ──────────────────────────────────
+  // Measure as haversine between midpoints of gate pair and guide pair
+  const A_vals = [
+    { label: 'Entry→G1 (mid)',  value: havMid(mid(1,2),   mid(11,12)) },
+    { label: 'Exit→G6 (mid)',   value: havMid(mid(23,24), mid(21,22)) },
+  ];
+
+  // ── B: spacing between consecutive guide pairs ────────────────────────
+  const B_vals = [
+    [11,12,13,14,'G1→G2'],[13,14,15,16,'G2→G3'],[15,16,17,18,'G3→G4'],
+    [17,18,19,20,'G4→G5'],[19,20,21,22,'G5→G6'],
+  ].map(([a,b,c,d,n]) => ({ label: n, value: havMid(mid(a,b), mid(c,d)) }));
+
+  // ── C: diagonal gate → first skier buoy ──────────────────────────────
+  // Four combinations: entry gate R/L → skier 1 R/L; exit gate → skier 6
+  const C_vals = [
+    { label: '1→5 (entry R→S1 R)', value: hav(1,5)   },
+    { label: '2→6 (entry L→S2 L)', value: hav(2,6)   },
+    { label: '24→9 (exit L→S5 R)', value: hav(24,9)  },
+    { label: '23→10 (exit R→S6 L)',value: hav(23,10) },
+  ];
+
+  // ── D: diagonal between consecutive skier buoys ───────────────────────
+  const D_vals = [
+    { label: 'S1→S2 (5↔6)',  value: hav(5,6)  },
+    { label: 'S2→S3 (6↔7)',  value: hav(6,7)  },
+    { label: 'S3→S4 (7↔8)',  value: hav(7,8)  },
+    { label: 'S4→S5 (8↔9)',  value: hav(8,9)  },
+    { label: 'S5→S6 (9↔10)', value: hav(9,10) },
+  ];
+
+  // ── F: skier lateral offset ───────────────────────────────────────────
+  // Derived from diagonal D and longitudinal component B:
+  //   F = √(D² − B²) / 2   (exact when course is straight)
+  // Uses each measured D value with the corresponding B value (or nominal).
+  const F_vals = [];
+  for (const d_entry of D_vals) {
+    if (d_entry.value === null) continue;
+    // Find the corresponding B at the same along-course segment
+    // D[i] is between skier i and i+1; B[i] is between guide i and guide i+1
+    const idx = D_vals.indexOf(d_entry);
+    const b_entry = B_vals[idx];
+    const bVal = (b_entry && b_entry.value !== null) ? b_entry.value : IWWF.B;
+    const inner = d_entry.value * d_entry.value - bVal * bVal;
+    if (inner < 0) continue;
+    const sk = d_entry.label.match(/S(\d+)→S(\d+)/);
+    F_vals.push({
+      label: `From D(${sk ? sk[0] : idx+1}) & B${idx+1}`,
+      value: Math.sqrt(inner) / 2,
+    });
+  }
+
+  // ── H: pre-gate distance ──────────────────────────────────────────────
+  const H_vals = [
+    { label: '1→3 (entry R → pre S R)', value: hav(1,3)   },
+    { label: '2→4 (entry L → pre S L)', value: hav(2,4)   },
+    { label: '23→25 (exit R → pre N R)', value: hav(23,25) },
+    { label: '24→26 (exit L → pre N L)', value: hav(24,26) },
+  ];
+
+  // Build final object — filter out null values
+  return {
+    E: E_vals.filter(x => x.value !== null),
+    G: G_vals.filter(x => x.value !== null),
+    A: A_vals.filter(x => x.value !== null),
+    B: B_vals.filter(x => x.value !== null),
+    C: C_vals.filter(x => x.value !== null),
+    D: D_vals.filter(x => x.value !== null),
+    F: F_vals,
+    H: H_vals.filter(x => x.value !== null),
+  };
+}

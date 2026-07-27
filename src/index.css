@@ -2062,3 +2062,172 @@ body {
   color: var(--text-muted);
 }
 .spc-close:hover { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   IWWF DIMENSIONS PANEL
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Scrollable wrapper for the full results tab */
+.results-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Section heading between dimensions and buoy list */
+.rl-section-heading {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 10px 14px 4px;
+  margin-top: 4px;
+}
+
+/* Panel container */
+.dim-panel {
+  background: rgba(15,23,42,0.6);
+  border: 1px solid rgba(99,179,237,0.1);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+
+/* Header bar */
+.dim-panel-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(99,179,237,0.08);
+  background: rgba(99,179,237,0.04);
+}
+.dim-ph-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}
+.dim-ph-sub {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Column header row */
+.dim-col-heads {
+  display: grid;
+  grid-template-columns: 26px 68px 42px 1fr 54px;
+  gap: 0;
+  padding: 5px 14px 4px;
+  background: rgba(15,23,42,0.4);
+  border-bottom: 1px solid rgba(99,179,237,0.06);
+}
+.dim-col-heads span {
+  font-size: 0.56rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+}
+.dch-meas, .dch-err { text-align: right; }
+
+/* Dimension group (summary row + optional sub-rows + description) */
+.dim-group {
+  border-bottom: 1px solid rgba(99,179,237,0.05);
+}
+.dim-group:last-child { border-bottom: none; }
+
+/* Summary row */
+.dim-row--summary {
+  display: grid;
+  grid-template-columns: 26px 68px 42px 1fr 54px;
+  gap: 0;
+  padding: 7px 14px;
+  align-items: center;
+  border-left: 3px solid rgba(99,179,237,0.1);
+  transition: background 0.15s;
+}
+.dim-row--summary:hover { background: rgba(99,179,237,0.03); }
+.dim-row--measured      { background: rgba(15,23,42,0.25); }
+
+.dr-dim {
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: #60a5fa;
+  font-family: 'Courier New', monospace;
+}
+.dr-spec {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.dr-tol {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.dr-meas {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dr-count {
+  font-size: 0.56rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.dr-err {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* Instance sub-rows */
+.dim-row--instance {
+  display: grid;
+  grid-template-columns: 26px 1fr 88px 54px;
+  gap: 0;
+  padding: 3px 14px 3px 30px;
+  align-items: center;
+  background: rgba(0,0,0,0.15);
+}
+.dr-dim-inst  { /* spacer */ }
+.dr-label-inst {
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dr-meas-inst {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dr-err-inst {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dim description line */
+.dim-detail {
+  font-size: 0.58rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  padding: 0 14px 6px 30px;
+  line-height: 1.4;
+}
