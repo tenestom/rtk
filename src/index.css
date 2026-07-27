@@ -1719,3 +1719,204 @@ body {
   color: var(--text-muted);
 }
 .sm-btn--cancel:hover { border-color: #475569; color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MEASURE DISTANCE  (3-point / triangle mode)
+   ═══════════════════════════════════════════════════════════════════ */
+
+.dm-screen { gap: 10px; }
+
+/* ── 3-point card grid ───────────────────────────────────────────── */
+.dm-points-grid {
+  display: flex;
+  gap: 7px;
+}
+
+.dm-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 10px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  border-top: 3px solid var(--pt-color, #3b82f6);
+  transition: border-color 0.2s;
+}
+
+.dm-card--set {
+  border-color: color-mix(in srgb, var(--pt-color, #3b82f6) 35%, transparent);
+  background: color-mix(in srgb, var(--pt-color, #3b82f6) 5%, var(--surface));
+}
+
+.dm-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dm-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--pt-color, #3b82f6);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.dm-label-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 2px 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: inherit;
+  outline: none;
+}
+.dm-label-input::placeholder { color: var(--text-muted); font-weight: 400; }
+.dm-label-input:focus { border-bottom-color: var(--pt-color, #3b82f6); }
+
+.dm-coords {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.dm-empty {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.dm-card-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: auto;
+}
+
+.dm-btn {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 5px 7px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.18s;
+  white-space: nowrap;
+}
+.dm-btn:disabled { opacity: 0.32; cursor: not-allowed; }
+.dm-btn:active:not(:disabled) { transform: scale(0.96); }
+
+.dm-btn--save {
+  flex: 1;
+  background: color-mix(in srgb, var(--pt-color, #3b82f6) 14%, transparent);
+  border-color: color-mix(in srgb, var(--pt-color, #3b82f6) 32%, transparent);
+  color: var(--pt-color, #60a5fa);
+}
+.dm-btn--save:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--pt-color, #3b82f6) 24%, transparent);
+}
+
+.dm-btn--clear {
+  background: rgba(239,68,68,0.08);
+  border-color: rgba(239,68,68,0.2);
+  color: #f87171;
+  padding: 5px 8px;
+}
+.dm-btn--clear:hover { background: rgba(239,68,68,0.18); }
+
+/* ── Results panel ───────────────────────────────────────────────── */
+.dm-results {
+  display: flex;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.dmr-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dmr-heading {
+  font-size: 0.58rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+}
+
+.dmr-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dmr-row--sum {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--border);
+  opacity: 0.7;
+}
+
+.dmr-side {
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-width: 12px;
+  text-align: center;
+}
+
+.dmr-dash {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.dmr-val {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  margin-left: auto;
+}
+
+.dmr-val--muted { color: var(--text-muted); font-size: 0.68rem; }
+
+.dmr-corner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 0.6rem;
+  font-weight: 900;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.dmr-sum-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
