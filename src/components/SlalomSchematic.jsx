@@ -14,6 +14,9 @@
 
 import { BUOY_DEFS, IWWF } from '../utils/slalom.js';
 
+// Pre-compute key along-course values for the schematic transform
+const CY_S1 = Math.sqrt(IWWF.C * IWWF.C - IWWF.F * IWWF.F); // ≈ 27.0 m
+
 const W  = 300;
 const H  = 640;
 const CX = 150;
@@ -21,15 +24,16 @@ const CX = 150;
 const STATUS_RING = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
 
 // ── Course-frame to schematic-pixel transform ─────────────────────────
-// Entry gate (cy=0) → sy≈557; Exit gate (cy=259) → sy≈75
-// Linear: sy = 557 - cy * (557-75)/259
-const SY_ENTRY = 557;
-const SY_EXIT  = 75;
-const PX_PER_M = (SY_ENTRY - SY_EXIT) / IWWF.LEN;  // pixels per metre (along course)
-
-// Lateral: cx=0 → sx=150; cx=±11.5m (skier) → sx=±248/52
-// px per metre lateral: (248-150)/11.5
-const PX_PER_M_LAT = (248 - CX) / IWWF.F;
+// Entry gate (cy=0) → sy=557; Exit gate (cy=259m) → sy=75
+// Linear: sy = 557 - cy × (557−75)/259
+const SY_ENTRY    = 557;
+const SY_EXIT     = 75;
+const PX_PER_M    = (SY_ENTRY - SY_EXIT) / IWWF.T;       // ≈ 1.858 px/m (along course)
+// Note: schematic lateral is NOT to scale — F=11.5m is much wider than the boat
+// channel, so skier buoys are shown at ±90px for diagram readability.
+const PX_PER_M_LAT = (248 - CX) / IWWF.F;                 // ≈ 8.52 px/m (lateral)
+// Pre-gate: H=55m south of entry gate → sy > SY_ENTRY
+const SY_PREGATE_S = SY_ENTRY + IWWF.H * PX_PER_M;       // ≈ 659 (clamped to viewBox)
 
 function courseToSchematic(cx, cy) {
   return {
@@ -74,32 +78,38 @@ export default function SlalomSchematic({
         <rect x={CX - 100} y={18} width={200} height={H - 36} rx="6"
           fill="rgba(14,165,233,0.06)" />
 
-        {/* Boat channel corridor */}
-        <line x1={CX - 13} y1={72} x2={CX - 13} y2={558}
-          stroke="rgba(234,179,8,0.18)" strokeWidth="26" />
+        {/* Boat channel corridor — between gate buoys, along centreline */}
+        {(() => {
+          const b1L = BUOY_DEFS.find(b => b.id === 2);   // entry gate left
+          const b23R = BUOY_DEFS.find(b => b.id === 23);  // exit gate right
+          const b23L = BUOY_DEFS.find(b => b.id === 24);  // exit gate left
+          const chanW = b23R.sx - b23L.sx + 4;
+          return (
+            <rect x={b1L.sx - 2} y={b23R.sy} width={chanW} height={b1L.sy - b23R.sy}
+              fill="rgba(234,179,8,0.08)" />
+          );
+        })()}
 
         {/* Centreline */}
         <line x1={CX} y1={18} x2={CX} y2={H - 18}
           stroke="rgba(148,163,184,0.15)" strokeWidth="1" strokeDasharray="6 5" />
 
-        {/* Gate cross-bars */}
-        <line x1={133} y1={613} x2={167} y2={613} stroke="#22c55e" strokeWidth="1.5" opacity="0.6" />
-        <line x1={128} y1={557} x2={172} y2={557} stroke="#ef4444" strokeWidth="2"  opacity="0.5" />
-        <line x1={128} y1={75}  x2={172} y2={75}  stroke="#ef4444" strokeWidth="2"  opacity="0.5" />
-        <line x1={133} y1={22}  x2={167} y2={22}  stroke="#22c55e" strokeWidth="1.5" opacity="0.6" />
-
-        {/* Skier reach lines */}
-        {[5,7,9].map(id => {
-          const b  = BUOY_DEFS.find(x => x.id === id);
-          const bb = BUOY_DEFS.find(x => x.id === (id===5?11:id===7?15:19));
-          return <line key={id} x1={CX} y1={(b.sy+bb.sy)/2} x2={b.sx} y2={b.sy}
-            stroke="rgba(239,68,68,0.12)" strokeWidth="1" />;
+        {/* Gate cross-bars — derived from buoy positions */}
+        {[[3,4,'#22c55e',1.5],[1,2,'#ef4444',2],[23,24,'#ef4444',2],[25,26,'#22c55e',1.5]].map(([la,lb,col,sw]) => {
+          const a = BUOY_DEFS.find(b => b.id === la);
+          const bb = BUOY_DEFS.find(b => b.id === lb);
+          return <line key={la} x1={bb.sx} y1={a.sy} x2={a.sx} y2={a.sy}
+            stroke={col} strokeWidth={sw} opacity="0.6" />;
         })}
-        {[6,8,10].map(id => {
-          const b  = BUOY_DEFS.find(x => x.id === id);
-          const bb = BUOY_DEFS.find(x => x.id === (id===6?13:id===8?17:21));
-          return <line key={id} x1={CX} y1={(b.sy+bb.sy)/2} x2={b.sx} y2={b.sy}
-            stroke="rgba(239,68,68,0.12)" strokeWidth="1" />;
+
+        {/* Skier reach lines: each skier buoy to centre line at same cy level */}
+        {[5,6,7,8,9,10].map(id => {
+          const b = BUOY_DEFS.find(x => x.id === id);
+          return (
+            <line key={id}
+              x1={CX} y1={b.sy} x2={b.sx} y2={b.sy}
+              stroke="rgba(239,68,68,0.12)" strokeWidth="1" />
+          );
         })}
 
         {/* N/S labels */}
