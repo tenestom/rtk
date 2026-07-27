@@ -97,13 +97,14 @@ export default function SweepMap({
         {boundaryM.length >= 3 && corridors.length > 0 && (
           <g clipPath={`url(#${clipId})`}>
             {corridors.map((rect, i) => {
-              const pts = rect
-                .map(([x,y]) => { const {px,py}=toPixel(x,y); return `${px.toFixed(1)},${py.toFixed(1)}`; })
-                .join(' ');
-              return (
-                <polygon key={i} points={pts}
-                  fill="rgba(56,189,248,0.38)" />
-              );
+              // Guard: rect must be a 4-element array of [x,y] pairs
+              if (!Array.isArray(rect) || rect.length < 3) return null;
+              try {
+                const pts = rect
+                  .map(([x, y]) => { const {px,py}=toPixel(x,y); return `${px.toFixed(1)},${py.toFixed(1)}`; })
+                  .join(' ');
+                return <polygon key={i} points={pts} fill="rgba(56,189,248,0.38)" />;
+              } catch { return null; }
             })}
           </g>
         )}
