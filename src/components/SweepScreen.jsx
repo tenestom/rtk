@@ -4,8 +4,10 @@ import { corridorRect, polygonAreaM, rectAreaM, formatArea, makeViewport } from 
 import SweepMap from './SweepMap.jsx';
 
 // ── localStorage helpers ──────────────────────────────────────────────
-const STORE_KEY = 'rtk_sweeps_v1';
+const STORE_KEY   = 'rtk_sweeps_v1';
+const CURRENT_KEY = 'rtk_sweep_current_v1';
 
+// Saved sweeps (completed)
 function loadSweeps() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); }
   catch { return []; }
@@ -20,6 +22,18 @@ function deleteSweep(id) {
   localStorage.setItem(STORE_KEY, JSON.stringify(filtered));
 }
 
+// Active session persistence
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(CURRENT_KEY) || 'null') || null; }
+  catch { return null; }
+}
+function saveSession(obj) {
+  try { localStorage.setItem(CURRENT_KEY, JSON.stringify(obj)); } catch {}
+}
+function clearSession() {
+  try { localStorage.removeItem(CURRENT_KEY); } catch {}
+}
+
 // ─────────────────────────────────────────────────────────────────────
 export default function SweepScreen({ data, onBack }) {
 
@@ -27,18 +41,26 @@ export default function SweepScreen({ data, onBack }) {
   const [topTab,      setTopTab]      = useState('new');    // 'new' | 'saved'
   const [viewingSweep,setViewingSweep]= useState(null);     // saved sweep object
 
+  // ── Restore session from localStorage on first render ────────────────
+  const _sess = loadSession();
+
   // ── Boundary definition ─────────────────────────────────────────────
-  const [boundaryGPS, setBoundaryGPS] = useState([]);
-  const [sweepWidth,  setSweepWidth]  = useState(3);
+  const [boundaryGPS, setBoundaryGPS] = useState(() => _sess?.boundaryGPS ?? []);
+  const [sweepWidth,  setSweepWidth]  = useState(() => _sess?.sweepWidth  ?? 3);
 
   // ── Sweep state ──────────────────────────────────────────────────────
-  const [phase,        setPhase]        = useState('boundary'); // 'boundary'|'sweeping'|'paused'
-  const [refLat,       setRefLat]       = useState(null);
-  const [refLon,       setRefLon]       = useState(null);
-  const [sweepViewport,setSweepViewport]= useState(null);
-  const [trackGPS,     setTrackGPS]     = useState([]);
-  const [corridors,    setCorridors]    = useState([]);
-  const [pois,         setPois]         = useState([]);
+  // Restore phase — if the session was mid-sweep, come back as paused
+  // (we can't resume continuous recording, but the painted corridors are intact)
+  const [phase,        setPhase]        = useState(() => {
+    const p = _sess?.phase;
+    return (p === 'sweeping' || p === 'paused') ? 'paused' : 'boundary';
+  });
+  const [refLat,       setRefLat]       = useState(() => _sess?.refLat   ?? null);
+  const [refLon,       setRefLon]       = useState(() => _sess?.refLon   ?? null);
+  const [sweepViewport,setSweepViewport]= useState(() => _sess?.sweepViewport ?? null);
+  const [trackGPS,     setTrackGPS]     = useState(() => _sess?.trackGPS  ?? []);
+  const [corridors,    setCorridors]    = useState(() => _sess?.corridors  ?? []);
+  const [pois,         setPois]         = useState(() => _sess?.pois       ?? []);
 
   // ── POI input ────────────────────────────────────────────────────────
   const [showPoiInput, setShowPoiInput] = useState(false);
@@ -54,11 +76,31 @@ export default function SweepScreen({ data, onBack }) {
   const [savedSweeps, setSavedSweeps] = useState(loadSweeps);
 
   // ── Mutable refs (read inside effects without causing re-runs) ───────
-  const phaseRef      = useRef('boundary');
-  const refLatRef     = useRef(null);
-  const refLonRef     = useRef(null);
-  const sweepWRef     = useRef(3);
+  const phaseRef      = useRef(phase);
+  const refLatRef     = useRef(refLat);
+  const refLonRef     = useRef(refLon);
+  const sweepWRef     = useRef(sweepWidth);
   const prevMRef      = useRef(null);    // last plotted local-metre position
+
+  // ── Persist session on every relevant state change ───────────────────
+  useEffect(() => {
+    // Don't persist if we're in a clean boundary state with nothing entered
+    if (phase === 'boundary' && boundaryGPS.length === 0 && pois.length === 0) {
+      clearSession();
+      return;
+    }
+    saveSession({
+      boundaryGPS,
+      sweepWidth,
+      phase,
+      refLat,
+      refLon,
+      sweepViewport,
+      trackGPS,
+      corridors,
+      pois,
+    });
+  }, [boundaryGPS, sweepWidth, phase, refLat, refLon, sweepViewport, trackGPS, corridors, pois]);
 
   // ── Derived GPS info ─────────────────────────────────────────────────
   const hasGps = data?.lat != null && data?.lon != null;
@@ -217,6 +259,7 @@ export default function SweepScreen({ data, onBack }) {
   }
 
   function resetAll() {
+    clearSession();
     setBoundaryGPS([]); setSweepWidth(3);
     setRefLat(null); setRefLon(null); setSweepViewport(null);
     setTrackGPS([]); setCorridors([]); setPois([]);
@@ -256,6 +299,9 @@ export default function SweepScreen({ data, onBack }) {
     const vp   = makeViewport(bM);
     return { boundaryM: bM, poisM: pM, fixedViewport: vp };
   }
+
+  // ── Derived: has any session state worth keeping? ────────────────────
+  const hasSession = boundaryGPS.length > 0 || corridors.length > 0 || pois.length > 0;
 
   // ═══════════════════════════════════════════════════════════════════
   // RENDER
@@ -322,6 +368,17 @@ export default function SweepScreen({ data, onBack }) {
           {/* ══ NEW SWEEP TAB ═══════════════════════════════════════════ */}
           {topTab === 'new' && (
             <>
+              {/* Restored session banner */}
+              {hasSession && phase === 'paused' && corridors.length > 0 && (
+                <div className="sweep-restored-banner">
+                  <span className="srb-icon">↩</span>
+                  <span className="srb-text">
+                    Session restored — {corridors.length} corridor{corridors.length !== 1 ? 's' : ''} painted,
+                    {' '}{pois.length} POI{pois.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              )}
+
               {/* Live GPS indicator */}
               <div className="live-pos-strip">
                 <span className="lps-label">Live</span>
@@ -422,6 +479,15 @@ export default function SweepScreen({ data, onBack }) {
                       Add {3 - boundaryGPS.length} more point{3-boundaryGPS.length>1?'s':''} to close the polygon
                     </p>
                   )}
+
+                  {/* Clear session button */}
+                  {hasSession && (
+                    <button id="btn-clear-sweep-session"
+                      className="sweep-btn sweep-btn--clear-session"
+                      onClick={resetAll}>
+                      ✕ Clear session
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -460,6 +526,13 @@ export default function SweepScreen({ data, onBack }) {
                   {phase === 'paused' && (
                     <p className="sweep-hint">Sweep paused. Press Resume to continue.</p>
                   )}
+
+                  {/* Clear session while sweeping */}
+                  <button id="btn-clear-sweep-session-sweep"
+                    className="sweep-btn sweep-btn--clear-session"
+                    onClick={resetAll}>
+                    ✕ Clear session
+                  </button>
                 </div>
               )}
             </>

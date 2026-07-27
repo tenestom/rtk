@@ -2231,3 +2231,52 @@ body {
   padding: 0 14px 6px 30px;
   line-height: 1.4;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SWEEP — Session persistence UI
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Restored session banner */
+.sweep-restored-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(99,179,237,0.07);
+  border: 1px solid rgba(99,179,237,0.2);
+  border-radius: var(--radius-sm);
+  margin-bottom: 2px;
+}
+.srb-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+.srb-text {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #60a5fa;
+  line-height: 1.4;
+}
+
+/* Clear session button */
+.sweep-btn--clear-session {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 10px;
+  border: 1px solid rgba(239,68,68,0.22);
+  background: rgba(239,68,68,0.07);
+  color: #f87171;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+.sweep-btn--clear-session:hover {
+  background: rgba(239,68,68,0.16);
+  border-color: rgba(239,68,68,0.4);
+}
+.sweep-btn--clear-session:active {
+  transform: scale(0.97);
+}
