@@ -21,6 +21,11 @@ function deleteSweep(id) {
   const filtered = loadSweeps().filter(s => s.id !== id);
   localStorage.setItem(STORE_KEY, JSON.stringify(filtered));
 }
+function updateSweep(id, patch) {
+  // Merge patch fields into the existing sweep record with matching id
+  const all = loadSweeps().map(s => s.id === id ? { ...s, ...patch } : s);
+  localStorage.setItem(STORE_KEY, JSON.stringify(all));
+}
 
 // ── Active session persistence ────────────────────────────────────────
 // NOTE: we deliberately do NOT serialize sweepViewport's toPixel function.
@@ -200,6 +205,12 @@ function SweepScreen({ data, onBack }) {
   // ── Saved sweeps ─────────────────────────────────────────────────────
   const [savedSweeps, setSavedSweeps] = useState(loadSweeps);
 
+  // ── Resume tracking ───────────────────────────────────────────────────
+  // When the user resumes a previously saved sweep, we track its id so
+  // confirmSave() can update the original record instead of creating a new one.
+  const [resumedFromId,   setResumedFromId]   = useState(null);
+  const [resumedFromName, setResumedFromName] = useState('');
+
   // ── Mutable refs ─────────────────────────────────────────────────────
   const phaseRef   = useRef(phase);
   const refLatRef  = useRef(refLat);
@@ -330,15 +341,21 @@ function SweepScreen({ data, onBack }) {
   function endSweep()    { phaseRef.current = 'paused';    setPhase('paused'); setShowSaveDialog(true); }
 
   function confirmSave() {
-    storeSweep({
-      id: `sweep_${Date.now()}`,
-      name: sweepName.trim() || `Sweep ${new Date().toLocaleDateString()}`,
-      date: new Date().toISOString(),
+    const name = sweepName.trim() || `Sweep ${new Date().toLocaleDateString()}`;
+    const record = {
+      name,
+      date:           new Date().toISOString(),
       boundaryGPS, sweepWidth, corridors, pois,
-      trackLength: trackGPS.length,
+      trackLength:    trackGPS.length,
       boundaryAreaM2: polygonAreaM(boundaryM),
       refLat, refLon,
-    });
+    };
+    if (resumedFromId) {
+      // Update the existing saved record in place
+      updateSweep(resumedFromId, record);
+    } else {
+      storeSweep({ id: `sweep_${Date.now()}`, ...record });
+    }
     setSavedSweeps(loadSweeps());
     setShowSaveDialog(false);
     resetAll();
@@ -355,6 +372,7 @@ function SweepScreen({ data, onBack }) {
     refLatRef.current = null; refLonRef.current = null;
     prevMRef.current = null;
     setSelectedPoi(null);
+    setResumedFromId(null); setResumedFromName('');
   }
 
   function addPoi() {
@@ -371,6 +389,50 @@ function SweepScreen({ data, onBack }) {
   function handleDeleteSaved(id) {
     deleteSweep(id); setSavedSweeps(loadSweeps());
     if (viewingSweep?.id === id) setViewingSweep(null);
+    // If the user was in a resumed session from this sweep, clear that link
+    if (resumedFromId === id) { setResumedFromId(null); setResumedFromName(''); }
+  }
+
+  function loadFromSaved(sw) {
+    // Validate the saved sweep has the minimum required fields
+    if (!sw?.boundaryGPS?.length || sw.boundaryGPS.length < 3) return;
+    if (typeof sw.refLat !== 'number' || typeof sw.refLon !== 'number') return;
+    try {
+      const rLat = sw.refLat, rLon = sw.refLon;
+      const bM = sw.boundaryGPS.map(p => toLocalMeters(p.lat, p.lon, rLat, rLon));
+      const vp = makeViewport(bM);
+      // Push saved data into active session state
+      setBoundaryGPS(sw.boundaryGPS);
+      setSweepWidth(sw.sweepWidth ?? 3);
+      setRefLat(rLat); setRefLon(rLon);
+      refLatRef.current = rLat; refLonRef.current = rLon;
+      sweepWRef.current = sw.sweepWidth ?? 3;
+      const safeCorridors = Array.isArray(sw.corridors)
+        ? sw.corridors.filter(r =>
+            Array.isArray(r) && r.length === 4 &&
+            r.every(pt => Array.isArray(pt) && pt.length === 2 && isFinite(pt[0]) && isFinite(pt[1])))
+        : [];
+      const safePois = Array.isArray(sw.pois)
+        ? sw.pois.filter(p => p && typeof p.lat === 'number' && typeof p.lon === 'number')
+        : [];
+      setCorridors(safeCorridors);
+      setPois(safePois);
+      setTrackGPS([]);         // track path not persisted in saved sweeps
+      setSweepViewport(vp);
+      prevMRef.current = null;
+      phaseRef.current = 'paused';
+      setPhase('paused');
+      setSelectedPoi(null);
+      // Remember which saved record we're extending
+      setResumedFromId(sw.id);
+      setResumedFromName(sw.name);
+      setSweepName(sw.name);
+      // Switch to the active sweep tab
+      setTopTab('new');
+      setViewingSweep(null);
+    } catch (e) {
+      console.warn('[SweepScreen] loadFromSaved failed:', e);
+    }
   }
 
   function savedSweepProps(sw) {
@@ -625,8 +687,12 @@ function SweepScreen({ data, onBack }) {
                       </span>
                     </div>
                     <div className="sc-actions">
-                      <button className="sc-btn sc-btn--view" onClick={() => setViewingSweep(sw)}>View</button>
-                      <button className="sc-btn sc-btn--del" onClick={() => handleDeleteSaved(sw.id)}>✕</button>
+                      <button className="sc-btn sc-btn--resume"
+                        onClick={() => loadFromSaved(sw)}>▶ Resume</button>
+                      <button className="sc-btn sc-btn--view"
+                        onClick={() => setViewingSweep(sw)}>View</button>
+                      <button className="sc-btn sc-btn--del"
+                        onClick={() => handleDeleteSaved(sw.id)}>✕</button>
                     </div>
                   </div>
                 </div>
@@ -658,7 +724,12 @@ function SweepScreen({ data, onBack }) {
       {showSaveDialog && (
         <div className="sweep-modal-overlay">
           <div className="sweep-modal">
-            <h3 className="sm-title">💾 Save Sweep</h3>
+            <h3 className="sm-title">💾 {resumedFromId ? 'Update Sweep' : 'Save Sweep'}</h3>
+            {resumedFromId && (
+              <p className="sm-sub" style={{ color: '#60a5fa', marginBottom: 4 }}>
+                Updating: <strong>{resumedFromName}</strong>
+              </p>
+            )}
             <div className="sm-stats">
               <span>{formatArea(sweptAreaM2)} swept (est.)</span>
               <span>{pois.length} POI{pois.length !== 1 ? 's' : ''}</span>
@@ -668,7 +739,9 @@ function SweepScreen({ data, onBack }) {
             <input id="input-sweep-name" type="text" className="sm-input" autoFocus
               value={sweepName} onChange={e => setSweepName(e.target.value)} />
             <div className="sm-actions">
-              <button className="sm-btn sm-btn--save" onClick={confirmSave}>Save</button>
+              <button className="sm-btn sm-btn--save" onClick={confirmSave}>
+                {resumedFromId ? 'Update' : 'Save'}
+              </button>
               <button className="sm-btn sm-btn--cancel" onClick={discardSweep}>Discard</button>
             </div>
           </div>
