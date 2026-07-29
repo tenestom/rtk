@@ -1,258 +1,463 @@
 /**
- * SlalomSchematic — interactive top-down diagram of all 26 buoys.
+ * SlalomSchematic — to-scale interactive course diagram
  *
- * Props:
- *   measured, statuses, posRefId, angleRefId, selectedId, onSelect
- *   liveSchematic  { cx, cy } | null  – live position in course-frame metres
- *   pois           [{lat,lon,desc}]
- *   selectedPoi    number | null
- *   onPoiSelect    (i) => void
- *   distMode       boolean
- *   distSel        [{type,id}|null, {type,id}|null]
- *   onDistSelect   (type, id) => void
+ * Coordinate system:
+ *   SVG x  = course cx   (right = positive, centreline = 0)
+ *   SVG y  = −course cy  (north = up, entry gate line = 0, exit gate = −259)
+ *
+ * ViewBox is in course-metres. 1 SVG unit = 1 metre.
+ * preserveAspectRatio="none" so the SVG always fills its container,
+ * and the viewBox maintains equal px/m on both axes at the initial zoom.
+ *
+ * Touch:  1-finger drag = pan  |  2-finger pinch = zoom
+ *         quick tap (<10 px, <200 ms) = buoy selection
  */
 
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { BUOY_DEFS, IWWF } from '../utils/slalom.js';
 
-// Pre-compute key along-course values for the schematic transform
-const CY_S1 = Math.sqrt(IWWF.C * IWWF.C - IWWF.F * IWWF.F); // ≈ 27.0 m
+// ── Constants ──────────────────────────────────────────────────────────
+const INIT_VB_W = 28;          // metres, initial lateral span (±14m)
+const ARROW_SCALE = 10;        // 1 cm error → 0.1 m arrow; 10 cm → 1 m arrow
+const MIN_ARROW_M = 0.02;      // suppress arrows < 2 cm error
+const STATUS_COLOR = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
 
-const W  = 300;
-const H  = 640;
-const CX = 150;
+// Full-course viewBox (all 26 buoys + pre-gates)
+const FULL_VB = { x: -14, y: -(IWWF.T + IWWF.H + 4), w: 28, h: IWWF.T + 2 * IWWF.H + 8 };
 
-const STATUS_RING = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
-
-// ── Course-frame to schematic-pixel transform ─────────────────────────
-// Entry gate (cy=0) → sy=557; Exit gate (cy=259m) → sy=75
-// Linear: sy = 557 - cy × (557−75)/259
-const SY_ENTRY    = 557;
-const SY_EXIT     = 75;
-const PX_PER_M    = (SY_ENTRY - SY_EXIT) / IWWF.T;       // ≈ 1.858 px/m (along course)
-// Note: schematic lateral is NOT to scale — F=11.5m is much wider than the boat
-// channel, so skier buoys are shown at ±90px for diagram readability.
-const PX_PER_M_LAT = (248 - CX) / IWWF.F;                 // ≈ 8.52 px/m (lateral)
-// Pre-gate: H=55m south of entry gate → sy > SY_ENTRY
-const SY_PREGATE_S = SY_ENTRY + IWWF.H * PX_PER_M;       // ≈ 659 (clamped to viewBox)
-
-function courseToSchematic(cx, cy) {
-  return {
-    sx: CX + cx * PX_PER_M_LAT,
-    sy: SY_ENTRY - cy * PX_PER_M,
-  };
+// Pick the largest nice scale-bar length that is ≤ vb.w/4
+function niceScaleM(vbW) {
+  const opts = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
+  const target = vbW / 4;
+  let pick = opts[0];
+  for (const m of opts) { if (m <= target) pick = m; else break; }
+  return pick;
 }
 
+// ──────────────────────────────────────────────────────────────────────
 export default function SlalomSchematic({
-  measured, statuses, posRefId, angleRefId, selectedId, onSelect,
-  liveSchematic   = null,
-  pois            = [],
-  selectedPoi     = null,
-  onPoiSelect     = () => {},
-  distMode        = false,
-  distSel         = [null, null],
-  onDistSelect    = () => {},
+  measured,
+  statuses,
+  posRefId,
+  angleRefId,
+  selectedId,
+  onSelect,
+  liveSchematic,      // {cx, cy} in course frame — null if unavailable
+  buoyErrors,         // {[id]: {dLon, dLat}} signed errors in course metres
+  poisCourse,         // [{cx, cy, desc}] POIs in course frame
+  selectedPoi,
+  onPoiSelect,
+  distMode,
+  distSel,
+  onDistSelect,
+  mode,               // 'survey' | 'place'
+  nearestPlaceId,     // buoy id nearest to GPS in place mode (within threshold)
 }) {
-  // Is a buoy currently selected for distance measurement?
-  function isDistSelected(id) {
-    return distSel.some(s => s?.type === 'buoy' && s?.id === id);
-  }
-  function isPoiDistSelected(i) {
-    return distSel.some(s => s?.type === 'poi' && s?.id === i);
+  const svgRef  = useRef(null);
+  const vbRef   = useRef({ x: -14, y: -32, w: INIT_VB_W, h: 40 });
+  const [vb, _setVb] = useState(vbRef.current);
+  const setVb = useCallback((next) => {
+    const v = typeof next === 'function' ? next(vbRef.current) : next;
+    vbRef.current = v;
+    _setVb(v);
+  }, []);
+
+  // Refs for stale-closure-safe access inside touch callbacks
+  const selectedIdRef   = useRef(selectedId);
+  const onSelectRef     = useRef(onSelect);
+  const distModeRef     = useRef(distMode);
+  const onDistSelectRef = useRef(onDistSelect);
+  useEffect(() => { selectedIdRef.current   = selectedId; },   [selectedId]);
+  useEffect(() => { onSelectRef.current     = onSelect; },     [onSelect]);
+  useEffect(() => { distModeRef.current     = distMode; },     [distMode]);
+  useEffect(() => { onDistSelectRef.current = onDistSelect; }, [onDistSelect]);
+
+  // ── Set equal-scale initial viewBox once SVG dimensions are known ────
+  useLayoutEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const { width, height } = svg.getBoundingClientRect();
+    if (width > 0 && height > 0) {
+      const h = INIT_VB_W * (height / width);
+      // Show 75% north of entry gate, 25% south (entry gate at 25% from bottom)
+      const initVb = { x: -INIT_VB_W / 2, y: -(h * 0.75), w: INIT_VB_W, h };
+      setVb(initVb);
+    }
+  }, [setVb]);
+
+  // ── Gesture state ────────────────────────────────────────────────────
+  const gestureRef = useRef({
+    active: false, type: 'none',
+    startVb: null, startTouches: null, startTime: 0,
+  });
+
+  // ── Touch handlers (non-passive for preventDefault) ──────────────────
+  const handleTouchStart = useCallback((e) => {
+    e.preventDefault();
+    const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+    gestureRef.current = {
+      active: true,
+      type:   touches.length === 1 ? 'pan' : 'pinch',
+      startVb:      { ...vbRef.current },
+      startTouches: touches,
+      startTime:    Date.now(),
+    };
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    e.preventDefault();
+    const g = gestureRef.current;
+    if (!g.active || !svgRef.current) return;
+    const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+    const rect = svgRef.current.getBoundingClientRect();
+    const sv = g.startVb;
+
+    if (g.type === 'pan' && touches.length === 1) {
+      const dx = -(touches[0].x - g.startTouches[0].x) / rect.width  * sv.w;
+      const dy = -(touches[0].y - g.startTouches[0].y) / rect.height * sv.h;
+      setVb({ ...sv, x: sv.x + dx, y: sv.y + dy });
+
+    } else if (touches.length >= 2 && g.startTouches.length >= 2) {
+      const [s0, s1] = g.startTouches;
+      const startDist = Math.hypot(s1.x - s0.x, s1.y - s0.y);
+      const curDist   = Math.hypot(touches[1].x - touches[0].x, touches[1].y - touches[0].y);
+      if (startDist < 1) return;
+
+      const scale = startDist / curDist; // >1 = zoom out, <1 = zoom in
+      // Midpoint of initial touch pair in SVG coords
+      const midSX = sv.x + ((s0.x + s1.x) / 2 - rect.left) / rect.width  * sv.w;
+      const midSY = sv.y + ((s0.y + s1.y) / 2 - rect.top)  / rect.height * sv.h;
+
+      const newW = Math.min(300, Math.max(1.5, sv.w * scale));
+      const newH = Math.min(900, Math.max(1.5, sv.h * scale));
+      const as   = newW / sv.w;
+
+      setVb({
+        x: midSX - (midSX - sv.x) * as,
+        y: midSY - (midSY - sv.y) * as,
+        w: newW, h: newH,
+      });
+    }
+  }, [setVb]);
+
+  const handleTouchEnd = useCallback((e) => {
+    e.preventDefault();
+    const g = gestureRef.current;
+    if (!g.active) return;
+    g.active = false;
+
+    // Tap detection
+    const elapsed   = Date.now() - g.startTime;
+    const remaining = Array.from(e.touches);
+    if (elapsed < 200 && g.type === 'pan' && remaining.length === 0) {
+      const endT = Array.from(e.changedTouches)[0];
+      if (!endT) return;
+      const moved = Math.hypot(endT.clientX - g.startTouches[0].x, endT.clientY - g.startTouches[0].y);
+      if (moved < 10) {
+        handleTap(endT.clientX, endT.clientY);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleTap(clientX, clientY) {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const curVb = vbRef.current;
+    const sx = curVb.x + (clientX - rect.left) / rect.width  * curVb.w;
+    const sy = curVb.y + (clientY - rect.top)  / rect.height * curVb.h;
+
+    // Find nearest buoy in SVG coords (buoy at (def.cx, −def.cy))
+    const threshold = curVb.w / 5;
+    let bestId = null, bestDist = threshold;
+    for (const def of BUOY_DEFS) {
+      const d = Math.hypot(sx - def.cx, sy - (-def.cy));
+      if (d < bestDist) { bestDist = d; bestId = def.id; }
+    }
+
+    if (bestId !== null) {
+      if (distModeRef.current) {
+        onDistSelectRef.current?.('buoy', bestId);
+      } else {
+        onSelectRef.current?.(bestId === selectedIdRef.current ? null : bestId);
+      }
+    } else {
+      // Tap on empty area — deselect
+      if (!distModeRef.current) onSelectRef.current?.(null);
+    }
   }
 
-  // POI positions on schematic: only possible once liveSchematic context is defined
-  // Actually POIs are GPS — we can't position them without the course transform here.
-  // We'll show them as a row of pins at the bottom of the legend instead,
-  // unless we have the courseToGPS transform. Since we don't import it here,
-  // we map POIs with a flag — parent will pass schematic coords if available.
-  // For now render POI pins at fixed placeholder col if liveSchematic not available.
+  // Mouse click handler (desktop)
+  function handleClick(e) {
+    handleTap(e.clientX, e.clientY);
+  }
 
+  // Attach non-passive touch listeners
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    svg.addEventListener('touchstart', handleTouchStart, { passive: false });
+    svg.addEventListener('touchmove',  handleTouchMove,  { passive: false });
+    svg.addEventListener('touchend',   handleTouchEnd,   { passive: false });
+    return () => {
+      svg.removeEventListener('touchstart', handleTouchStart);
+      svg.removeEventListener('touchmove',  handleTouchMove);
+      svg.removeEventListener('touchend',   handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
+
+  // ── Derived render values ────────────────────────────────────────────
+  const r      = vb.w / 40;          // buoy radius in course metres
+  const scaleM = niceScaleM(vb.w);   // scale-bar length in metres
+  const pad    = r * 1.5;            // viewport edge padding in course metres
+
+  // Scale bar position (bottom-left of viewport)
+  const sbX1 = vb.x + pad;
+  const sbX2 = sbX1 + scaleM;
+  const sbY  = vb.y + vb.h - pad;
+
+  // North arrow position (top-right of viewport)
+  const naX  = vb.x + vb.w - pad * 2.5;
+  const naY  = vb.y + pad * 2.5;
+
+  // ────────────────────────────────────────────────────────────────────
   return (
-    <div className="schematic-scroll">
-      <svg viewBox={`0 0 ${W} ${H}`} className="schematic-svg">
+    <div className="slalom-schematic-wrap">
 
-        {/* Background */}
-        <rect width={W} height={H} fill="#080d1a" />
+      {/* Overlay buttons (HTML for reliable tap targets) */}
+      <div className="schematic-overlay">
+        <button className="sco-btn" title="Reset view"
+          onClick={() => {
+            const svg = svgRef.current;
+            if (!svg) return;
+            const { width, height } = svg.getBoundingClientRect();
+            const h = INIT_VB_W * ((height || 520) / (width || 360));
+            setVb({ x: -INIT_VB_W / 2, y: -(h * 0.75), w: INIT_VB_W, h });
+          }}>⊡</button>
+        <button className="sco-btn" title="Fit full course"
+          onClick={() => setVb(FULL_VB)}>↕</button>
+      </div>
 
-        {/* Water area */}
-        <rect x={CX - 100} y={18} width={200} height={H - 36} rx="6"
-          fill="rgba(14,165,233,0.06)" />
+      {/* ── Main SVG ─────────────────────────────────────────────── */}
+      <svg
+        ref={svgRef}
+        viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
+        className="slalom-schematic-svg"
+        preserveAspectRatio="none"
+        onClick={handleClick}
+        style={{ touchAction: 'none', userSelect: 'none', display: 'block', width: '100%', cursor: 'crosshair' }}
+      >
+        {/* ── Arrowhead marker for error arrows ─────────────────── */}
+        <defs>
+          <marker id="slm-arrow" markerWidth="5" markerHeight="4"
+            refX="5" refY="2" orient="auto" markerUnits="strokeWidth">
+            <polygon points="0 0, 5 2, 0 4" fill="#f97316" />
+          </marker>
+        </defs>
 
-        {/* Boat channel corridor — between gate buoys, along centreline */}
-        {(() => {
-          const b1L = BUOY_DEFS.find(b => b.id === 2);   // entry gate left
-          const b23R = BUOY_DEFS.find(b => b.id === 23);  // exit gate right
-          const b23L = BUOY_DEFS.find(b => b.id === 24);  // exit gate left
-          const chanW = b23R.sx - b23L.sx + 4;
-          return (
-            <rect x={b1L.sx - 2} y={b23R.sy} width={chanW} height={b1L.sy - b23R.sy}
-              fill="rgba(234,179,8,0.08)" />
-          );
-        })()}
+        {/* ── Background ────────────────────────────────────────── */}
+        <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#060c1a" />
+
+        {/* Course rectangle (entry gate to exit gate) */}
+        <rect x={vb.x} y={-IWWF.T} width={vb.w} height={IWWF.T}
+          fill="rgba(59,130,246,0.04)" />
+
+        {/* Pre-gate zones */}
+        <rect x={vb.x} y={0}       width={vb.w} height={IWWF.H}
+          fill="rgba(34,197,94,0.03)" />
+        <rect x={vb.x} y={-IWWF.T - IWWF.H} width={vb.w} height={IWWF.H}
+          fill="rgba(34,197,94,0.03)" />
 
         {/* Centreline */}
-        <line x1={CX} y1={18} x2={CX} y2={H - 18}
-          stroke="rgba(148,163,184,0.15)" strokeWidth="1" strokeDasharray="6 5" />
+        <line x1={0} y1={vb.y} x2={0} y2={vb.y + vb.h}
+          stroke="rgba(148,163,184,0.12)" strokeWidth={r * 0.15}
+          strokeDasharray={`${r * 0.8} ${r * 0.4}`} />
 
-        {/* Gate cross-bars — derived from buoy positions */}
-        {[[3,4,'#22c55e',1.5],[1,2,'#ef4444',2],[23,24,'#ef4444',2],[25,26,'#22c55e',1.5]].map(([la,lb,col,sw]) => {
-          const a = BUOY_DEFS.find(b => b.id === la);
-          const bb = BUOY_DEFS.find(b => b.id === lb);
-          return <line key={la} x1={bb.sx} y1={a.sy} x2={a.sx} y2={a.sy}
-            stroke={col} strokeWidth={sw} opacity="0.6" />;
-        })}
+        {/* Boat channel corridor */}
+        <rect x={-IWWF.G} y={-IWWF.T} width={IWWF.G * 2} height={IWWF.T}
+          fill="rgba(234,179,8,0.06)" />
 
-        {/* Skier reach lines: each skier buoy to centre line at same cy level */}
-        {[5,6,7,8,9,10].map(id => {
-          const b = BUOY_DEFS.find(x => x.id === id);
-          return (
-            <line key={id}
-              x1={CX} y1={b.sy} x2={b.sx} y2={b.sy}
-              stroke="rgba(239,68,68,0.12)" strokeWidth="1" />
-          );
-        })}
+        {/* Gate crossbars */}
+        <line x1={-IWWF.E * 4} y1={0}       x2={IWWF.E * 4} y2={0}
+          stroke="rgba(239,68,68,0.4)" strokeWidth={r * 0.12} />
+        <line x1={-IWWF.E * 4} y1={-IWWF.T} x2={IWWF.E * 4} y2={-IWWF.T}
+          stroke="rgba(239,68,68,0.4)" strokeWidth={r * 0.12} />
 
-        {/* N/S labels */}
-        <text x={CX} y={H-6} textAnchor="middle" fontSize="8" fill="rgba(100,116,139,0.7)"
-          fontFamily="-apple-system,sans-serif" fontWeight="600">S</text>
-        <text x={CX} y={12} textAnchor="middle" fontSize="8" fill="rgba(100,116,139,0.7)"
-          fontFamily="-apple-system,sans-serif" fontWeight="600">N</text>
+        {/* ── Buoys ─────────────────────────────────────────────── */}
+        {BUOY_DEFS.map(def => {
+          const tx = def.cx;         // theoretical SVG x
+          const ty = -def.cy;        // theoretical SVG y (flipped)
+          const status  = statuses?.[def.id];
+          const meas    = measured?.[def.id];
+          const err     = buoyErrors?.[def.id];
+          const isOk    = !status || status.status === 'ok';
+          const isBad   = status && status.status !== 'ok';
 
-        {/* ── Buoys ── */}
-        {BUOY_DEFS.map(b => {
-          const isMeasured = !!measured[b.id];
-          const status     = statuses[b.id];
-          const isSelected = selectedId === b.id;
-          const isPosRef   = posRefId   === b.id;
-          const isAngleRef = angleRefId === b.id;
-          const isDistSel  = isDistSelected(b.id);
+          // Measured SVG position = theoretical + error offset
+          const hasMeasPos = meas && err != null;
+          const mx = hasMeasPos ? tx + err.dLat : tx;
+          const my = hasMeasPos ? ty - err.dLon : ty;
 
-          const fillColor = isMeasured ? b.color : 'none';
-          const ringColor = status ? STATUS_RING[status.status] : null;
-          const R_OUTER = b.type === 'skier' ? 14 : 11;
-          const R_INNER = b.type === 'skier' ? 9  : 7;
-          const R_TAP   = b.type === 'skier' ? 22 : 20;
+          const bx = meas ? mx : tx;
+          const by = meas ? my : ty;
+
+          const isSelected  = selectedId === def.id;
+          const inDistSel   = distMode && distSel?.some(s => s?.type === 'buoy' && s?.id === def.id);
+          const isPosRef    = def.id === posRefId;
+          const isAngRef    = def.id === angleRefId;
+          const isNearPlace = mode === 'place' && nearestPlaceId === def.id;
 
           return (
-            <g key={b.id}
-              onClick={() => {
-                if (distMode) { onDistSelect('buoy', b.id); }
-                else { onSelect(b.id); }
-              }}
-              style={{ cursor: 'pointer' }}>
+            <g key={def.id} style={{ pointerEvents: 'none' }}>
 
-              {/* Tap target */}
-              <circle cx={b.sx} cy={b.sy} r={R_TAP} fill="transparent" />
-
-              {/* Dist-mode highlight */}
-              {isDistSel && (
-                <circle cx={b.sx} cy={b.sy} r={R_OUTER + 8}
-                  fill="rgba(96,165,250,0.18)" stroke="#60a5fa" strokeWidth="2" />
+              {/* Place mode: dashed target ring for unmeasured buoys */}
+              {mode === 'place' && !meas && (
+                <circle cx={tx} cy={ty} r={r * 2.2}
+                  fill="none" stroke={def.color} strokeWidth={r * 0.18}
+                  strokeDasharray={`${r * 0.7} ${r * 0.35}`} opacity="0.4" />
               )}
 
-              {/* Status ring */}
-              {ringColor && (
-                <circle cx={b.sx} cy={b.sy} r={R_OUTER + 4}
-                  fill="none" stroke={ringColor} strokeWidth="2.5" opacity="0.85">
-                  {status.status !== 'ok' && (
-                    <animate attributeName="opacity" values="0.85;0.3;0.85" dur="1.8s" repeatCount="indefinite" />
-                  )}
+              {/* Pulsing ring: nearest-to-place buoy */}
+              {isNearPlace && (
+                <circle cx={tx} cy={ty} r={r * 3} fill="none" stroke="#60a5fa" strokeWidth={r * 0.28} opacity="0.75">
+                  <animate attributeName="r" values={`${r*2.5};${r*4};${r*2.5}`} dur="1.5s" repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0.8;0.1;0.8" dur="1.5s" repeatCount="indefinite" />
                 </circle>
               )}
 
-              {/* Selection highlight */}
-              {isSelected && (
-                <circle cx={b.sx} cy={b.sy} r={R_OUTER + 9}
-                  fill="none" stroke="rgba(255,255,255,0.5)"
-                  strokeWidth="2" strokeDasharray="4 3" />
+              {/* Dashed theoretical ring for out-of-spec measured buoys */}
+              {isBad && hasMeasPos && (
+                <circle cx={tx} cy={ty} r={r * 1.25}
+                  fill="none" stroke={def.color} strokeWidth={r * 0.18}
+                  strokeDasharray={`${r * 0.45} ${r * 0.25}`} opacity="0.5" />
               )}
 
-              {/* Main circle */}
-              <circle cx={b.sx} cy={b.sy} r={R_INNER}
-                fill={fillColor} stroke={b.color}
-                strokeWidth={isMeasured ? 0 : 1.8}
-                opacity={isMeasured ? 1 : 0.6} />
+              {/* Error arrows (longitudinal + lateral) */}
+              {isBad && hasMeasPos && (() => {
+                const lon = err.dLon; // positive = too far north
+                const lat = err.dLat; // positive = too far right
+                const sw  = r * 0.22;
+                return (
+                  <>
+                    {Math.abs(lon) > MIN_ARROW_M && (
+                      <line x1={bx} y1={by} x2={bx} y2={by - lon * ARROW_SCALE}
+                        stroke="#f97316" strokeWidth={sw}
+                        markerEnd="url(#slm-arrow)" />
+                    )}
+                    {Math.abs(lat) > MIN_ARROW_M && (
+                      <line x1={bx} y1={by} x2={bx + lat * ARROW_SCALE} y2={by}
+                        stroke="#f97316" strokeWidth={sw}
+                        markerEnd="url(#slm-arrow)" />
+                    )}
+                  </>
+                );
+              })()}
 
-              {/* Reference badges */}
-              {isPosRef && (
-                <circle cx={b.sx + R_INNER - 2} cy={b.sy - R_INNER + 2} r="5"
-                  fill="#3b82f6" stroke="#080d1a" strokeWidth="1" />
-              )}
-              {isAngleRef && (
-                <circle cx={b.sx - R_INNER + 2} cy={b.sy - R_INNER + 2} r="5"
-                  fill="#a855f7" stroke="#080d1a" strokeWidth="1" />
+              {/* Buoy circle */}
+              {meas ? (
+                <circle cx={bx} cy={by} r={r}
+                  fill={status ? STATUS_COLOR[status.status] : def.color}
+                  stroke="#0a0f1e" strokeWidth={r * 0.18} />
+              ) : (
+                <circle cx={tx} cy={ty} r={r}
+                  fill="rgba(10,15,30,0.55)" stroke={def.color}
+                  strokeWidth={r * 0.18} opacity={mode === 'place' ? 0.7 : 0.38} />
               )}
 
-              {/* Number label */}
-              <text x={b.sx} y={b.sy}
-                textAnchor="middle" dominantBaseline="middle"
-                fontSize={b.type === 'skier' ? '8' : '6.5'} fontWeight="800"
-                fontFamily="-apple-system,BlinkMacSystemFont,sans-serif"
-                fill={isMeasured ? '#fff' : b.color}
-                opacity={isMeasured ? 1 : 0.8}>
-                {b.label}
+              {/* Pos ref / angle ref ring */}
+              {(isPosRef || isAngRef) && (
+                <circle cx={bx} cy={by} r={r * 1.65}
+                  fill="none"
+                  stroke={isPosRef ? '#a78bfa' : '#34d399'}
+                  strokeWidth={r * 0.18}
+                  strokeDasharray={`${r * 0.4} ${r * 0.2}`} />
+              )}
+
+              {/* Selection ring */}
+              {(isSelected || inDistSel) && (
+                <circle cx={bx} cy={by} r={r * 2.1}
+                  fill="none" stroke="#60a5fa" strokeWidth={r * 0.3} />
+              )}
+
+              {/* Label */}
+              <text
+                x={def.cx >= 0 ? tx + r * 1.5 : tx - r * 1.5}
+                y={ty}
+                textAnchor={def.cx >= 0 ? 'start' : 'end'}
+                dominantBaseline="middle"
+                fontSize={r * 0.82}
+                fill="rgba(255,255,255,0.42)"
+                style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                {def.label}
               </text>
+
             </g>
           );
         })}
 
-        {/* ── POI markers on schematic ── */}
-        {liveSchematic && pois.map((poi, i) => {
-          // POI GPS → schematic only if we have course transform available via parent
-          // We display them as floating markers along the right edge with index
-          const px = W - 18;
-          const py = 30 + i * 22;
-          const isSel = selectedPoi === i;
-          const isDSel = isPoiDistSelected(i);
-          return (
-            <g key={`poi-${i}`} onClick={() => {
-              if (distMode) onDistSelect('poi', i);
-              else onPoiSelect(i);
-            }} style={{ cursor: 'pointer' }}>
-              {isDSel && <circle cx={px} cy={py} r="12" fill="rgba(96,165,250,0.18)" stroke="#60a5fa" strokeWidth="1.5" />}
-              {isSel  && <circle cx={px} cy={py} r="12" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" strokeWidth="1.5" />}
-              <circle cx={px} cy={py} r="8" fill="#f59e0b" stroke="#080d1a" strokeWidth="1.5" />
-              <text x={px} y={py} textAnchor="middle" dominantBaseline="middle"
-                fontSize="9" fontWeight="900"
-                fontFamily="-apple-system,sans-serif" fill="#080d1a">!</text>
-            </g>
-          );
-        })}
-
-        {/* ── Live GPS position on schematic ── */}
-        {liveSchematic && (() => {
-          const { sx, sy } = courseToSchematic(liveSchematic.cx, liveSchematic.cy);
-          // Only render if within schematic bounds
-          if (sx < 0 || sx > W || sy < 0 || sy > H) return null;
-          return (
-            <g>
-              <circle cx={sx} cy={sy} r="8" fill="none" stroke="#3b82f6" strokeWidth="2">
-                <animate attributeName="r"       values="8;18;8"   dur="2s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.7;0;0.7" dur="2s" repeatCount="indefinite" />
-              </circle>
-              <circle cx={sx} cy={sy} r="5" fill="#3b82f6" />
-              <circle cx={sx} cy={sy} r="2.5" fill="#fff" opacity="0.85" />
-            </g>
-          );
-        })()}
-
-        {/* Dist-mode overlay hint */}
-        {distMode && (
-          <rect x="0" y="0" width={W} height={H} fill="none"
-            stroke="#60a5fa" strokeWidth="2" opacity="0.3" strokeDasharray="8 6" rx="4" />
+        {/* ── Live GPS dot ───────────────────────────────────────── */}
+        {liveSchematic && (
+          <g style={{ pointerEvents: 'none' }}>
+            {/* Pulsing ring */}
+            <circle cx={liveSchematic.cx} cy={-liveSchematic.cy}
+              r={r * 1.2} fill="none" stroke="#3b82f6" strokeWidth={r * 0.25}>
+              <animate attributeName="r"
+                values={`${r};${r * 3};${r}`} dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity"
+                values="0.8;0;0.8" dur="2s" repeatCount="indefinite" />
+            </circle>
+            {/* Solid dot */}
+            <circle cx={liveSchematic.cx} cy={-liveSchematic.cy}
+              r={r * 0.65} fill="#3b82f6" />
+          </g>
         )}
 
-      </svg>
+        {/* ── POI markers ────────────────────────────────────────── */}
+        {(poisCourse ?? []).map((poi, i) => (
+          <g key={i} onClick={(e) => { e.stopPropagation(); onPoiSelect?.(i === selectedPoi ? null : i); }}
+            style={{ cursor: 'pointer' }}>
+            <circle cx={poi.cx} cy={-poi.cy} r={r * 1.2}
+              fill="#f59e0b" stroke="#0a0f1e" strokeWidth={r * 0.18}
+              opacity={selectedPoi === i ? 1 : 0.82} />
+            <text x={poi.cx} y={-poi.cy}
+              textAnchor="middle" dominantBaseline="middle"
+              fontSize={r * 0.9} fontWeight="900" fill="#0a0f1e"
+              style={{ pointerEvents: 'none' }}>!</text>
+          </g>
+        ))}
 
-      {/* Legend */}
-      <div className="schematic-legend">
-        <span className="sl-item"><span className="sl-dot" style={{background:'#ef4444'}} />Gate / Skier</span>
-        <span className="sl-item"><span className="sl-dot" style={{background:'#eab308'}} />Boat guide</span>
-        <span className="sl-item"><span className="sl-dot" style={{background:'#22c55e'}} />Pre-gate</span>
-        <span className="sl-item"><span className="sl-dot" style={{background:'#3b82f6'}} />Pos ref / Live</span>
-        <span className="sl-item"><span className="sl-dot" style={{background:'#a855f7'}} />Angle ref</span>
-        <span className="sl-item"><span className="sl-dot" style={{background:'#f59e0b'}} />POI</span>
-      </div>
+        {/* ── Scale bar (bottom-left of viewport) ───────────────── */}
+        <g style={{ pointerEvents: 'none' }}>
+          <line x1={sbX1} y1={sbY} x2={sbX2} y2={sbY}
+            stroke="#64748b" strokeWidth={r * 0.13} strokeLinecap="round" />
+          <line x1={sbX1} y1={sbY - r * 0.3} x2={sbX1} y2={sbY + r * 0.3}
+            stroke="#64748b" strokeWidth={r * 0.1} />
+          <line x1={sbX2} y1={sbY - r * 0.3} x2={sbX2} y2={sbY + r * 0.3}
+            stroke="#64748b" strokeWidth={r * 0.1} />
+          <text x={(sbX1 + sbX2) / 2} y={sbY - r * 0.55}
+            textAnchor="middle" fill="#64748b" fontSize={r * 0.65}
+            style={{ userSelect: 'none' }}>
+            {scaleM >= 1 ? `${scaleM} m` : `${scaleM * 100} cm`}
+          </text>
+        </g>
+
+        {/* ── North arrow (top-right of viewport) ───────────────── */}
+        <g style={{ pointerEvents: 'none' }}>
+          {/* Arrow shaft upward */}
+          <line x1={naX} y1={naY + r * 1.2} x2={naX} y2={naY - r * 0.5}
+            stroke="#94a3b8" strokeWidth={r * 0.18} />
+          {/* Arrowhead */}
+          <polygon
+            points={`${naX},${naY - r * 1.5} ${naX - r * 0.45},${naY - r * 0.3} ${naX + r * 0.45},${naY - r * 0.3}`}
+            fill="#94a3b8" />
+          {/* N label */}
+          <text x={naX} y={naY + r * 2}
+            textAnchor="middle" fill="#64748b"
+            fontSize={r * 0.68} fontWeight="700"
+            style={{ userSelect: 'none' }}>N</text>
+        </g>
+
+      </svg>
     </div>
   );
 }

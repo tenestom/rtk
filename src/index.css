@@ -2287,3 +2287,212 @@ body {
 .sweep-btn--clear-session:active {
   transform: scale(0.97);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   SLALOM SCHEMATIC — to-scale SVG wrapper
+══════════════════════════════════════════════════════════════════ */
+
+.slalom-schematic-wrap {
+  position: relative;
+  width: 100%;
+  background: #060c1a;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 4px 0 8px;
+}
+
+.slalom-schematic-svg {
+  display: block;
+  width: 100%;
+  height: 520px;
+  cursor: crosshair;
+}
+
+/* Overlay: reset/fit buttons top-right */
+.schematic-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+}
+
+.sco-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(148,163,184,0.2);
+  background: rgba(10,15,30,0.85);
+  backdrop-filter: blur(8px);
+  color: #94a3b8;
+  font-size: 1.05rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.sco-btn:hover {
+  background: rgba(59,130,246,0.18);
+  color: #60a5fa;
+  border-color: rgba(59,130,246,0.35);
+}
+.sco-btn:active { transform: scale(0.94); }
+
+/* ── Mode toggle (Survey / Place Course) ─────────────────────── */
+.slalom-mode-toggle {
+  display: flex;
+  gap: 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 3px;
+  margin: 4px 0 6px;
+}
+
+.smt-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+.smt-btn--active {
+  background: rgba(59,130,246,0.2);
+  color: #60a5fa;
+  box-shadow: 0 1px 4px rgba(59,130,246,0.15);
+}
+.smt-btn:active { transform: scale(0.97); }
+
+/* ── Place mode guidance panel ───────────────────────────────── */
+.place-guidance-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(59,130,246,0.09);
+  border: 1px solid rgba(59,130,246,0.22);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 2px 0 6px;
+  min-height: 50px;
+}
+.pgp-icon {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+.pgp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+}
+.pgp-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #93c5fd;
+}
+.pgp-name {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+.pgp-text {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  flex: 1;
+}
+.pgp-measure {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.pgp-measure:disabled {
+  background: rgba(59,130,246,0.3);
+  color: rgba(255,255,255,0.4);
+  cursor: not-allowed;
+}
+.pgp-measure:not(:disabled):hover { background: #2563eb; }
+.pgp-measure:not(:disabled):active { transform: scale(0.97); }
+
+/* ── Results tab: directional error detail ───────────────────── */
+.rl-error-detail {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 3px 0;
+  font-size: 0.72rem;
+}
+.rl-ed-dir {
+  color: #f97316;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.rl-ed-sep {
+  color: #334155;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RESPONSIVE — iPad / tablet (≥600px)
+══════════════════════════════════════════════════════════════════ */
+@media (min-width: 600px) {
+  .app-shell {
+    max-width: 900px;
+  }
+
+  .slalom-schematic-svg {
+    height: 680px;
+  }
+
+  .slalom-screen .tab-bar {
+    gap: 6px;
+  }
+
+  .slalom-screen .tab-btn {
+    font-size: 0.88rem;
+    padding: 9px 18px;
+  }
+
+  /* Larger touch targets for iPad */
+  .sco-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 1.15rem;
+  }
+
+  .smt-btn {
+    padding: 10px 16px;
+    font-size: 0.88rem;
+  }
+
+  .pgp-measure {
+    padding: 10px 20px;
+    font-size: 0.88rem;
+  }
+
+  /* Buoy action buttons bigger on tablet */
+  .bp-btn, .sab-btn {
+    min-height: 44px;
+    font-size: 0.88rem;
+  }
+
+  /* Results list more legible */
+  .rl-row {
+    font-size: 0.88rem;
+  }
+}
+

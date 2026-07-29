@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   BUOY_DEFS, BUOY_BY_ID, IWWF_DIM_DEFS,
-  buildCourseTransform, computeStatus, formatError, computeMeasuredDimensions,
+  buildCourseTransform, buildCourseInverseTransform,
+  computeStatus, formatError, computeMeasuredDimensions,
 } from '../utils/slalom.js';
 import { haversine } from '../utils/geo.js';
 import SlalomSchematic from './SlalomSchematic.jsx';
-import SlalomMap from './SlalomMap.jsx';
 
 // ── localStorage helpers ──────────────────────────────────────────────
 const CURRENT_KEY = 'rtk_slalom_current_v1';
@@ -37,9 +37,10 @@ export default function SlalomSurvey({ data, onBack }) {
   const [angleRefId,  setAngleRefId]  = useState(() => loadCurrent().angleRefId  ?? 23);
   const [pois,        setPois]        = useState(() => loadCurrent().pois        ?? []);
 
-  // ── UI state ─────────────────────────────────────────────────────────
+  // ── UI state ─────────────────────────────────────────────────────
   const [selectedId,  setSelectedId]  = useState(null);
-  const [tab,         setTab]         = useState('survey');  // 'survey'|'map'|'results'|'saved'
+  const [tab,         setTab]         = useState('survey');  // 'survey'|'results'|'saved'
+  const [mode,        setMode]        = useState('survey'); // 'survey'|'place'
 
   // POI input
   const [showPoiInput, setShowPoiInput] = useState(false);
@@ -60,14 +61,12 @@ export default function SlalomSurvey({ data, onBack }) {
   const [distMode, setDistMode] = useState(false);
 
   const hasGps    = data?.lat != null && data?.lon != null;
-  const currentPos = hasGps ? { lat: data.lat, lon: data.lon } : null;
+  const currentPos = hasGps ? { lat: data.lat, lon: data.lon } : null; // eslint-disable-line
 
   // ── Persist current session whenever key state changes ───────────────
   useEffect(() => {
     saveCurrent({ measured, posRefId, angleRefId, pois });
   }, [measured, posRefId, angleRefId, pois]);
-
-  // ── Course transform ──────────────────────────────────────────────────
   const posRefMeasured   = measured[posRefId];
   const angleRefMeasured = measured[angleRefId];
   const canCompute = posRefMeasured && angleRefMeasured && posRefId !== angleRefId;
@@ -75,6 +74,15 @@ export default function SlalomSurvey({ data, onBack }) {
   const courseToGPS = useMemo(() => {
     if (!canCompute) return null;
     return buildCourseTransform(
+      BUOY_BY_ID[posRefId],   posRefMeasured,
+      BUOY_BY_ID[angleRefId], angleRefMeasured,
+    );
+  }, [canCompute, posRefId, posRefMeasured, angleRefId, angleRefMeasured]);
+
+  // Inverse: GPS → course frame {cx, cy} (metres)
+  const gpsToCourse = useMemo(() => {
+    if (!canCompute) return null;
+    return buildCourseInverseTransform(
       BUOY_BY_ID[posRefId],   posRefMeasured,
       BUOY_BY_ID[angleRefId], angleRefMeasured,
     );
@@ -93,33 +101,44 @@ export default function SlalomSurvey({ data, onBack }) {
     })
   ), [measured, theoretical]);
 
-  // ── Live position on schematic (course-frame coords) ─────────────────
+  // Signed course-frame errors for each measured buoy: {dLon, dLat} in metres
+  // dLon > 0 = too far toward exit gate; dLat > 0 = too far right
+  const buoyErrors = useMemo(() => {
+    if (!gpsToCourse) return {};
+    const result = {};
+    for (const def of BUOY_DEFS) {
+      const m = measured[def.id];
+      if (!m) continue;
+      const mc = gpsToCourse(m.lat, m.lon);
+      result[def.id] = { dLon: mc.cy - def.cy, dLat: mc.cx - def.cx };
+    }
+    return result;
+  }, [gpsToCourse, measured]);
+
+  // POIs converted to course frame for the schematic
+  const poisCourse = useMemo(() => {
+    if (!gpsToCourse) return [];
+    return pois.map((p, idx) => ({ ...gpsToCourse(p.lat, p.lon), desc: p.desc, idx }));
+  }, [gpsToCourse, pois]);
+
+  // ── Live position in course frame ───────────────────────────────────
   const liveSchematic = useMemo(() => {
-    if (!canCompute || !currentPos || !courseToGPS) return null;
-    // Invert the transform: GPS → course frame
-    const posRef  = BUOY_BY_ID[posRefId];
-    const angRef  = BUOY_BY_ID[angleRefId];
-    const pGPS    = posRefMeasured, aGPS = angleRefMeasured;
-    const MPD_LAT = 111_320;
-    const MPD_LON = Math.cos(pGPS.lat * Math.PI / 180) * 111_320;
-    const dE = (aGPS.lon - pGPS.lon) * MPD_LON;
-    const dN = (aGPS.lat - pGPS.lat) * MPD_LAT;
-    const dx_c = angRef.cx - posRef.cx;
-    const dy_c = angRef.cy - posRef.cy;
-    const theta = Math.atan2(dE, dN) - Math.atan2(dx_c, dy_c);
-    // Origin in GPS
-    const posref_E = posRef.cx * Math.cos(theta) + posRef.cy * Math.sin(theta);
-    const posref_N = -posRef.cx * Math.sin(theta) + posRef.cy * Math.cos(theta);
-    const originLat = pGPS.lat - posref_N / MPD_LAT;
-    const originLon = pGPS.lon - posref_E / MPD_LON;
-    // GPS → course frame (inverse rotation)
-    const E = (currentPos.lon - originLon) * MPD_LON;
-    const N = (currentPos.lat - originLat) * MPD_LAT;
-    const cos_t = Math.cos(theta), sin_t = Math.sin(theta);
-    const cx =  E * cos_t - N * sin_t;
-    const cy =  E * sin_t + N * cos_t;
-    return { cx, cy };
-  }, [canCompute, currentPos, courseToGPS, posRefId, angleRefId, posRefMeasured, angleRefMeasured]);
+    if (!gpsToCourse || !hasGps) return null;
+    return gpsToCourse(data.lat, data.lon);
+  }, [gpsToCourse, hasGps, data?.lat, data?.lon]);
+
+  // ── Place mode: nearest unmeasured buoy within proximity threshold ─────
+  const nearestPlaceId = useMemo(() => {
+    if (mode !== 'place' || !gpsToCourse || !hasGps) return null;
+    const live = gpsToCourse(data.lat, data.lon);
+    let bestId = null, bestDist = 8; // 8 m proximity threshold
+    for (const def of BUOY_DEFS) {
+      if (measured[def.id]) continue;
+      const d = Math.hypot(live.cx - def.cx, live.cy - def.cy);
+      if (d < bestDist) { bestDist = d; bestId = def.id; }
+    }
+    return bestId;
+  }, [mode, gpsToCourse, hasGps, data?.lat, data?.lon, measured]);
 
   // ── Distance measurement ──────────────────────────────────────────────
   const distanceResult = useMemo(() => {
@@ -215,20 +234,30 @@ export default function SlalomSurvey({ data, onBack }) {
     if (!sw) return {};
     const canC = sw.measured[sw.posRefId] && sw.measured[sw.angleRefId]
               && sw.posRefId !== sw.angleRefId;
-    let theo = {};
+    let theo = {}, savedBuoyErrors = {};
     if (canC) {
       const fn = buildCourseTransform(
         BUOY_BY_ID[sw.posRefId],   sw.measured[sw.posRefId],
         BUOY_BY_ID[sw.angleRefId], sw.measured[sw.angleRefId],
       );
       theo = Object.fromEntries(BUOY_DEFS.map(b => [b.id, fn(b.cx, b.cy)]));
+      const gps2c = buildCourseInverseTransform(
+        BUOY_BY_ID[sw.posRefId],   sw.measured[sw.posRefId],
+        BUOY_BY_ID[sw.angleRefId], sw.measured[sw.angleRefId],
+      );
+      for (const def of BUOY_DEFS) {
+        const m = sw.measured[def.id];
+        if (!m) continue;
+        const mc = gps2c(m.lat, m.lon);
+        savedBuoyErrors[def.id] = { dLon: mc.cy - def.cy, dLat: mc.cx - def.cx };
+      }
     }
     const sts = Object.fromEntries(BUOY_DEFS.map(b => {
       const m = sw.measured[b.id], t = theo[b.id];
       if (!m || !t) return [b.id, null];
       return [b.id, computeStatus(m, t, b.tol)];
     }));
-    return { measured: sw.measured, theoretical: theo, statuses: sts, pois: sw.pois ?? [] };
+    return { measured: sw.measured, theoretical: theo, statuses: sts, pois: sw.pois ?? [], buoyErrors: savedBuoyErrors };
   }
 
   const vc = viewingCourse ? savedCourseProps(viewingCourse) : null;
@@ -263,21 +292,26 @@ export default function SlalomSurvey({ data, onBack }) {
             </span>
           </div>
           <div className="tab-bar">
-            {['map','results'].map(t => (
+            {['survey','results'].map(t => (
               <button key={t} className={`tab-btn${tab===t?' tab-btn--active':''}`}
                 onClick={() => setTab(t)}>
-                {t === 'map' ? '📍 Map' : '📋 Results'}
+                {t === 'survey' ? '🗺️ Schematic' : '📋 Results'}
               </button>
             ))}
           </div>
-          {tab === 'map' && (
-            <SlalomMap measured={vc.measured} theoretical={vc.theoretical}
-              statuses={vc.statuses} currentPos={null} buoyDefs={BUOY_DEFS}
-              pois={vc.pois} selectedPoi={null} onPoiTap={() => {}}
-              distSel={[null,null]} />
+          {tab === 'survey' && (
+            <SlalomSchematic
+              measured={vc.measured} statuses={vc.statuses}
+              posRefId={viewingCourse.posRefId} angleRefId={viewingCourse.angleRefId}
+              selectedId={selectedId} onSelect={setSelectedId}
+              liveSchematic={null} buoyErrors={vc.buoyErrors}
+              poisCourse={[]} selectedPoi={null} onPoiSelect={() => {}}
+              distMode={false} distSel={[null,null]} onDistSelect={() => {}}
+              mode="survey" nearestPlaceId={null}
+            />
           )}
           {tab === 'results' && (
-            <SavedResultsList statuses={vc.statuses} />
+            <SavedResultsList statuses={vc.statuses} buoyErrors={vc.buoyErrors} />
           )}
         </>
       )}
@@ -311,19 +345,18 @@ export default function SlalomSurvey({ data, onBack }) {
 
           {/* Tab bar */}
           <div className="tab-bar">
-            {['survey','map','results','saved'].map(t => (
+            {['survey','results','saved'].map(t => (
               <button key={t} id={`tab-${t}`}
                 className={`tab-btn${tab===t?' tab-btn--active':''}`}
                 onClick={() => setTab(t)}>
-                {t==='survey'  ? '🗺️ Schema' :
-                 t==='map'     ? '📍 Map'    :
-                 t==='results' ? '📋 Results':
+                {t==='survey'  ? '🗺️ Schematic' :
+                 t==='results' ? '📋 Results'  :
                                  `💾 Saved${savedCourses.length>0?` (${savedCourses.length})`:''}`}
               </button>
             ))}
           </div>
 
-          {/* ══ SURVEY TAB ══════════════════════════════════════════════ */}
+          {/* ══ SURVEY TAB ══════════════════════════════════════════════════════ */}
           {tab === 'survey' && (
             <>
               <div className="live-pos-strip">
@@ -333,6 +366,50 @@ export default function SlalomSurvey({ data, onBack }) {
                 </span>
               </div>
 
+              {/* Survey / Place Course mode toggle */}
+              <div className="slalom-mode-toggle">
+                <button id="btn-mode-survey"
+                  className={`smt-btn${mode === 'survey' ? ' smt-btn--active' : ''}`}
+                  onClick={() => setMode('survey')}>
+                  Survey
+                </button>
+                <button id="btn-mode-place"
+                  className={`smt-btn${mode === 'place' ? ' smt-btn--active' : ''}`}
+                  onClick={() => setMode('place')}>
+                  🎯 Place Course
+                </button>
+              </div>
+
+              {/* Place mode guidance panel */}
+              {mode === 'place' && canCompute && (
+                <div className="place-guidance-panel">
+                  {nearestPlaceId ? (
+                    <>
+                      <span className="pgp-icon">🎯</span>
+                      <div className="pgp-body">
+                        <span className="pgp-title">Place buoy {nearestPlaceId}</span>
+                        <span className="pgp-name">{BUOY_BY_ID[nearestPlaceId].name}</span>
+                      </div>
+                      <button className="pgp-measure"
+                        onClick={() => saveGps(nearestPlaceId)} disabled={!hasGps}>
+                        ⊙ Measure
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="pgp-icon">🧭</span>
+                      <span className="pgp-text">Navigate to the next buoy shown on the schematic</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {mode === 'place' && !canCompute && (
+                <div className="place-guidance-panel">
+                  <span className="pgp-icon">⚠️</span>
+                  <span className="pgp-text">Measure buoy {posRefId} (pos ref) and buoy {angleRefId} (angle ref) to compute theoretical positions</span>
+                </div>
+              )}
+
               <SlalomSchematic
                 measured={measured}
                 statuses={statuses}
@@ -341,12 +418,15 @@ export default function SlalomSurvey({ data, onBack }) {
                 selectedId={selectedId}
                 onSelect={id => setSelectedId(id === selectedId ? null : id)}
                 liveSchematic={liveSchematic}
-                pois={pois}
+                buoyErrors={buoyErrors}
+                poisCourse={poisCourse}
                 selectedPoi={selectedPoi}
                 onPoiSelect={i => setSelectedPoi(i === selectedPoi ? null : i)}
                 distMode={distMode}
                 distSel={distSel}
                 onDistSelect={handleDistSelect}
+                mode={mode}
+                nearestPlaceId={nearestPlaceId}
               />
 
               {/* Buoy action panel */}
@@ -468,52 +548,6 @@ export default function SlalomSurvey({ data, onBack }) {
             </>
           )}
 
-          {/* ══ MAP TAB ══════════════════════════════════════════════════ */}
-          {tab === 'map' && (
-            <>
-              <SlalomMap
-                measured={measured}
-                theoretical={theoretical}
-                statuses={statuses}
-                currentPos={currentPos}
-                buoyDefs={BUOY_DEFS}
-                pois={pois}
-                selectedPoi={selectedPoi}
-                onPoiTap={i => setSelectedPoi(i === selectedPoi ? null : i)}
-                distSel={distSel}
-                distMode={distMode}
-                onDistSelect={handleDistSelect}
-              />
-              {/* Reuse bottom action bar */}
-              <div className="slalom-action-bar">
-                <button className="sab-btn sab-btn--poi" onClick={addPoi} disabled={!hasGps}>
-                  📍 Add POI
-                </button>
-                <button className={`sab-btn${distMode?' sab-btn--dist-active':' sab-btn--dist'}`}
-                  onClick={() => { setDistMode(d => !d); setDistSel([null,null]); }}>
-                  📏 Measure
-                </button>
-                <button className="sab-btn sab-btn--save"
-                  onClick={() => { setCourseName(`Course ${new Date().toLocaleDateString()}`); setShowSaveDialog(true); }}
-                  disabled={measuredCount === 0}>
-                  💾 Save
-                </button>
-              </div>
-              {distMode && (
-                <div className="slalom-dist-status">
-                  <span className="sds-label">
-                    {!distSel[0] ? 'Tap any buoy or POI — point 1' :
-                     !distSel[1] ? 'Tap any buoy or POI — point 2' :
-                     distanceResult != null
-                       ? `Distance: ${distanceResult >= 1 ? distanceResult.toFixed(2)+' m' : (distanceResult*100).toFixed(1)+' cm'}`
-                       : 'One or both points not measured'}
-                  </span>
-                  {distSel[0] && <button className="sds-clear" onClick={() => setDistSel([null,null])}>Reset</button>}
-                </div>
-              )}
-            </>
-          )}
-
           {/* ══ RESULTS TAB ══════════════════════════════════════════════ */}
           {tab === 'results' && (
             <div className="results-scroll">
@@ -535,6 +569,7 @@ export default function SlalomSurvey({ data, onBack }) {
                       <span className="rl-pending">—</span>
                     </div>
                   );
+                  const err = buoyErrors[b.id];
                   return (
                     <div key={b.id} className="rl-row"
                       style={{ borderLeft: `3px solid ${st ? STATUS_COLOR[st.status] : '#334155'}` }}>
@@ -547,6 +582,18 @@ export default function SlalomSurvey({ data, onBack }) {
                         </span>
                       ) : (
                         <span className="rl-pending">no refs</span>
+                      )}
+                      {/* Directional error breakdown for out-of-spec buoys */}
+                      {st && st.status !== 'ok' && err && (
+                        <div className="rl-error-detail">
+                          <span className="rl-ed-dir">
+                            {err.dLon > 0 ? '↑' : '↓'} {Math.abs(err.dLon * 100).toFixed(1)} cm {err.dLon > 0 ? 'exit' : 'entry'}
+                          </span>
+                          <span className="rl-ed-sep">·</span>
+                          <span className="rl-ed-dir">
+                            {err.dLat > 0 ? '→' : '←'} {Math.abs(err.dLat * 100).toFixed(1)} cm {err.dLat > 0 ? 'right' : 'left'}
+                          </span>
+                        </div>
                       )}
                     </div>
                   );
@@ -576,7 +623,7 @@ export default function SlalomSurvey({ data, onBack }) {
                     </div>
                     <div className="sc-actions">
                       <button className="sc-btn sc-btn--view"
-                        onClick={() => { setViewingCourse(sw); setTab('map'); }}>View</button>
+                        onClick={() => { setViewingCourse(sw); setTab('survey'); }}>View</button>
                       <button className="sc-btn sc-btn--del"
                         onClick={() => deleteCourseSaved(sw.id)}>✕</button>
                     </div>
@@ -631,12 +678,13 @@ export default function SlalomSurvey({ data, onBack }) {
 }
 
 // ── Saved course results list (read-only) ─────────────────────────────
-function SavedResultsList({ statuses }) {
-  const STATUS_COLOR_L = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
+function SavedResultsList({ statuses, buoyErrors = {} }) {
+  const SC = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
   return (
     <div className="results-list">
       {BUOY_DEFS.map(b => {
-        const st = statuses[b.id];
+        const st  = statuses[b.id];
+        const err = buoyErrors[b.id];
         if (!st) return (
           <div key={b.id} className="rl-row rl-row--unmeasured">
             <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
@@ -646,13 +694,24 @@ function SavedResultsList({ statuses }) {
         );
         return (
           <div key={b.id} className="rl-row"
-            style={{ borderLeft: `3px solid ${STATUS_COLOR_L[st.status]}` }}>
+            style={{ borderLeft: `3px solid ${SC[st.status]}` }}>
             <span className="rl-badge" style={{ background: b.color }}>{b.label}</span>
             <span className="rl-name">{b.name}</span>
             <span className="rl-tol">±{(b.tol*100).toFixed(0)}cm</span>
-            <span className="rl-error" style={{ color: STATUS_COLOR_L[st.status] }}>
+            <span className="rl-error" style={{ color: SC[st.status] }}>
               {formatError(st.error)}
             </span>
+            {st.status !== 'ok' && err && (
+              <div className="rl-error-detail">
+                <span className="rl-ed-dir">
+                  {err.dLon > 0 ? '↑' : '↓'} {Math.abs(err.dLon * 100).toFixed(1)} cm {err.dLon > 0 ? 'exit' : 'entry'}
+                </span>
+                <span className="rl-ed-sep">·</span>
+                <span className="rl-ed-dir">
+                  {err.dLat > 0 ? '→' : '←'} {Math.abs(err.dLat * 100).toFixed(1)} cm {err.dLat > 0 ? 'right' : 'left'}
+                </span>
+              </div>
+            )}
           </div>
         );
       })}

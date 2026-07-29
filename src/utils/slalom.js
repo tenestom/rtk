@@ -256,6 +256,45 @@ export function buildCourseTransform(posRefDef, posRefGPS, angleRefDef, angleRef
   };
 }
 
+// ── Inverse course transform ──────────────────────────────────────────
+/**
+ * Build the inverse of buildCourseTransform:
+ * returns gpsToCourse(lat, lon) → {cx, cy} in course-frame metres.
+ *
+ * Uses the same rotation angle θ and origin as buildCourseTransform.
+ * Inverse rotation: [cx,cy] = R^T · [east,north]
+ *   cx =  east · cos_t − north · sin_t
+ *   cy =  east · sin_t + north · cos_t
+ */
+export function buildCourseInverseTransform(posRefDef, posRefGPS, angleRefDef, angleRefGPS) {
+  const MPD_LAT = 111_320;
+  const MPD_LON = Math.cos((posRefGPS.lat * Math.PI) / 180) * 111_320;
+
+  const dE   = (angleRefGPS.lon - posRefGPS.lon) * MPD_LON;
+  const dN   = (angleRefGPS.lat - posRefGPS.lat) * MPD_LAT;
+  const dx_c = angleRefDef.cx  - posRefDef.cx;
+  const dy_c = angleRefDef.cy  - posRefDef.cy;
+
+  const theta  = Math.atan2(dE, dN) - Math.atan2(dx_c, dy_c);
+  const cos_t  = Math.cos(theta);
+  const sin_t  = Math.sin(theta);
+
+  const posref_E  =  posRefDef.cx * cos_t + posRefDef.cy * sin_t;
+  const posref_N  = -posRefDef.cx * sin_t + posRefDef.cy * cos_t;
+  const originLat = posRefGPS.lat - posref_N / MPD_LAT;
+  const originLon = posRefGPS.lon - posref_E / MPD_LON;
+
+  return function gpsToCourse(lat, lon) {
+    const E  = (lon - originLon) * MPD_LON;
+    const N  = (lat - originLat) * MPD_LAT;
+    return {
+      cx:  E * cos_t - N * sin_t,
+      cy:  E * sin_t + N * cos_t,
+    };
+  };
+}
+
+
 // ── Status calculation ────────────────────────────────────────────────
 /**
  * @param {{ lat, lon }} measured
