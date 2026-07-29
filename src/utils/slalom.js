@@ -220,6 +220,85 @@ BUOY_DEFS.forEach(b => { b.sx = S[b.id].sx; b.sy = S[b.id].sy; });
 // Quick lookup by id
 export const BUOY_BY_ID = Object.fromEntries(BUOY_DEFS.map(b => [b.id, b]));
 
+// ── 8-Buoy Course ─────────────────────────────────────────────────────
+/**
+ * The 8-Buoy Course is a modified 6-Buoy Course designed for dual-direction
+ * skiing.  Changes from the standard course:
+ *
+ *  REMOVED  – North pre-gate pair (buoys 25, 26)
+ *  CHANGED  – Northernmost boat guide pair (21, 22) → GREEN, now acts as
+ *             north pre-gate when travelling N→S.
+ *  ADDED    – (relative to the southern entry gate, cy=0)
+ *               cy = −82 m : new south gate pair (ids 27, 28)       RED
+ *               cy = −55 m : extra skier buoy east of south pre-gate RED
+ *                            (id 29)
+ *               cy = −14 m : new boat guide pair (ids 30, 31)      YELLOW
+ *                          + skier buoy west of them (id 32)          RED
+ *               cy = +177 m: new mid-course gate pair (ids 33, 34)   RED
+ *
+ * Total: 32 buoys  (24 original − 2 removed + 8 new/changed + 2 colour-only)
+ * Buoys with isNew=true   → new additions specific to the 8-buoy layout.
+ * Buoys with isChanged=true → colour/role changed from 6-buoy baseline.
+ */
+export const BUOY_DEFS_8 = [
+  // ── New south extension gate (cy = −82 m) ───────────────────────────────
+  { id: 27, label: '27', cx: +IWWF.E, cy: -82,              color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'S Gate R',      isNew: true },
+  { id: 28, label: '28', cx: -IWWF.E, cy: -82,              color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'S Gate L',      isNew: true },
+
+  // ── South pre-gate (unchanged, cy = −55 m = −H) ────────────────────────
+  { id: 3,  label: '3',  cx: +IWWF.G, cy: -IWWF.H,          color: C_GRN, type: 'pregate', tol: IWWF.TOL_H, name: 'Pre-gate S R' },
+  { id: 4,  label: '4',  cx: -IWWF.G, cy: -IWWF.H,          color: C_GRN, type: 'pregate', tol: IWWF.TOL_H, name: 'Pre-gate S L' },
+
+  // ── New skier buoy east of south pre-gate (cy = −55 m) ─────────────────
+  { id: 29, label: '29', cx: +IWWF.F, cy: -IWWF.H,          color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'S Skier E',    isNew: true },
+
+  // ── New boat guide pair + skier buoy west (cy = −14 m) ─────────────────
+  { id: 30, label: '30', cx: +IWWF.G, cy: -14,               color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'S Guide R',    isNew: true },
+  { id: 31, label: '31', cx: -IWWF.G, cy: -14,               color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'S Guide L',    isNew: true },
+  { id: 32, label: '32', cx: -IWWF.F, cy: -14,               color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'S Skier W',    isNew: true },
+
+  // ── Standard southern entry gate (cy = 0) ──────────────────────────────
+  { id:  1, label: '1',  cx: +IWWF.E, cy:  0,                color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Entry gate R' },
+  { id:  2, label: '2',  cx: -IWWF.E, cy:  0,                color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Entry gate L' },
+
+  // ── Standard skier buoys 1-6 (unchanged) ───────────────────────────────
+  { id:  5, label: '5',  cx: +IWWF.F, cy: CY_S1,             color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 1 R' },
+  { id:  6, label: '6',  cx: -IWWF.F, cy: CY_S1+DS_LON,      color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 2 L' },
+  { id:  7, label: '7',  cx: +IWWF.F, cy: CY_S1+DS_LON*2,    color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 3 R' },
+  { id:  8, label: '8',  cx: -IWWF.F, cy: CY_S1+DS_LON*3,    color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 4 L' },
+  { id:  9, label: '9',  cx: +IWWF.F, cy: CY_S1+DS_LON*4,    color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 5 R' },
+  { id: 10, label: '10', cx: -IWWF.F, cy: CY_S1+DS_LON*5,    color: C_RED, type: 'skier',   tol: IWWF.TOL_F, name: 'Skier 6 L' },
+
+  // ── Boat guide pairs 1-5 (unchanged, YELLOW, cy = A … A+4B) ───────────
+  { id: 11, label: '11', cx: +IWWF.G, cy: IWWF.A,            color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 1 R' },
+  { id: 12, label: '12', cx: -IWWF.G, cy: IWWF.A,            color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 1 L' },
+  { id: 13, label: '13', cx: +IWWF.G, cy: IWWF.A+IWWF.B,     color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 2 R' },
+  { id: 14, label: '14', cx: -IWWF.G, cy: IWWF.A+IWWF.B,     color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 2 L' },
+  { id: 15, label: '15', cx: +IWWF.G, cy: IWWF.A+IWWF.B*2,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 3 R' },
+  { id: 16, label: '16', cx: -IWWF.G, cy: IWWF.A+IWWF.B*2,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 3 L' },
+  { id: 17, label: '17', cx: +IWWF.G, cy: IWWF.A+IWWF.B*3,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 4 R' },
+  { id: 18, label: '18', cx: -IWWF.G, cy: IWWF.A+IWWF.B*3,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 4 L' },
+  { id: 19, label: '19', cx: +IWWF.G, cy: IWWF.A+IWWF.B*4,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 5 R' },
+  { id: 20, label: '20', cx: -IWWF.G, cy: IWWF.A+IWWF.B*4,   color: C_YEL, type: 'boat',    tol: IWWF.TOL_G, name: 'Boat guide 5 L' },
+
+  // ── New mid-course gate (cy = 177 m) ────────────────────────────────────
+  { id: 33, label: '33', cx: +IWWF.E, cy: 177,               color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Mid Gate R',   isNew: true },
+  { id: 34, label: '34', cx: -IWWF.E, cy: 177,               color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Mid Gate L',   isNew: true },
+
+  // ── Boat guide 6 → colour changed to GREEN (now N pre-gate, cy = A+5B) ─
+  { id: 21, label: '21', cx: +IWWF.G, cy: IWWF.A+IWWF.B*5,  color: C_GRN, type: 'pregate', tol: IWWF.TOL_G, name: 'N Pre-gate R', isChanged: true },
+  { id: 22, label: '22', cx: -IWWF.G, cy: IWWF.A+IWWF.B*5,  color: C_GRN, type: 'pregate', tol: IWWF.TOL_G, name: 'N Pre-gate L', isChanged: true },
+
+  // ── Standard exit gate (cy = T = 259 m) ────────────────────────────────
+  { id: 23, label: '23', cx: +IWWF.E, cy: IWWF.T,            color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Exit gate R' },
+  { id: 24, label: '24', cx: -IWWF.E, cy: IWWF.T,            color: C_RED, type: 'gate',    tol: IWWF.TOL_E, name: 'Exit gate L' },
+
+  // Note: North pre-gate (buoys 25, 26) is intentionally absent.
+];
+
+export const BUOY_BY_ID_8 = Object.fromEntries(BUOY_DEFS_8.map(b => [b.id, b]));
+
+
 // ── Course transform builder ──────────────────────────────────────────
 /**
  * Build a function that converts course-frame (cx, cy) to GPS {lat, lon}.

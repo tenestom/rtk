@@ -2496,3 +2496,57 @@ body {
   }
 }
 
+/* ── Course type selector bar ──────────────────────────────────────── */
+.slalom-course-type-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 4px;
+  padding: 4px 6px 4px 8px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+}
+.sctb-label {
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 600;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+.sctb-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s;
+  text-align: center;
+}
+.sctb-btn--active {
+  background: rgba(99,102,241,0.2);
+  color: #a5b4fc;
+  border-color: rgba(99,102,241,0.35);
+  box-shadow: 0 1px 4px rgba(99,102,241,0.15);
+}
+.sctb-btn:active { transform: scale(0.97); }
+
+/* ── Saved-card 8-buoy badge ───────────────────────────────────────── */
+.sc-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.sc-badge--8buoy {
+  background: rgba(99,102,241,0.18);
+  color: #a5b4fc;
+  border: 1px solid rgba(99,102,241,0.3);
+}

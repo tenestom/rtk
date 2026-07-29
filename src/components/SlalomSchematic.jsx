@@ -13,7 +13,7 @@
  *         quick tap (<10 px, <200 ms) = buoy selection
  */
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { BUOY_DEFS, IWWF } from '../utils/slalom.js';
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -22,8 +22,9 @@ const ARROW_SCALE = 10;        // 1 cm error → 0.1 m arrow; 10 cm → 1 m arro
 const MIN_ARROW_M = 0.02;      // suppress arrows < 2 cm error
 const STATUS_COLOR = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
 
-// Full-course viewBox (all 26 buoys + pre-gates)
-const FULL_VB = { x: -14, y: -(IWWF.T + IWWF.H + 4), w: 28, h: IWWF.T + 2 * IWWF.H + 8 };
+// Colour constants for isNew / isChanged rings
+const NEW_RING_COLOR     = '#60a5fa'; // blue
+const CHANGED_RING_COLOR = '#34d399'; // teal
 
 // Pick the largest nice scale-bar length that is ≤ vb.w/4
 function niceScaleM(vbW) {
@@ -52,6 +53,7 @@ export default function SlalomSchematic({
   onDistSelect,
   mode,               // 'survey' | 'place'
   nearestPlaceId,     // buoy id nearest to GPS in place mode (within threshold)
+  buoyDefs = BUOY_DEFS, // ← allow caller to pass 8-buoy defs
 }) {
   const svgRef  = useRef(null);
   const vbRef   = useRef({ x: -14, y: -32, w: INIT_VB_W, h: 40 });
@@ -61,6 +63,23 @@ export default function SlalomSchematic({
     vbRef.current = v;
     _setVb(v);
   }, []);
+
+  // Stale-closure-safe ref for buoyDefs (used inside touch callbacks)
+  const buoyDefsRef = useRef(buoyDefs);
+  useEffect(() => { buoyDefsRef.current = buoyDefs; }, [buoyDefs]);
+
+  // Full-course viewBox computed from actual buoyDefs extent
+  const fullVb = useMemo(() => {
+    const minCY = Math.min(...buoyDefs.map(d => d.cy));
+    const maxCY = Math.max(...buoyDefs.map(d => d.cy));
+    const margin = 8;
+    return {
+      x: -14,
+      y: -(maxCY + margin),
+      w:  28,
+      h:  (maxCY - minCY) + margin * 2,
+    };
+  }, [buoyDefs]);
 
   // Refs for stale-closure-safe access inside touch callbacks
   const selectedIdRef   = useRef(selectedId);
@@ -79,8 +98,13 @@ export default function SlalomSchematic({
     const { width, height } = svg.getBoundingClientRect();
     if (width > 0 && height > 0) {
       const h = INIT_VB_W * (height / width);
-      // Show 75% north of entry gate, 25% south (entry gate at 25% from bottom)
-      const initVb = { x: -INIT_VB_W / 2, y: -(h * 0.75), w: INIT_VB_W, h };
+      // Compute course south extent so the initial view always shows entry gate area
+      const minCY = Math.min(...buoyDefsRef.current.map(d => d.cy));
+      // Show entry gate (0) at 30% from bottom; extend south if needed
+      const topCY   = h * 0.70;               // how far north to show
+      const southCY = Math.min(-4, minCY - 4); // at least 4m south of southernmost buoy
+      const useH    = Math.max(h, topCY - southCY);
+      const initVb = { x: -INIT_VB_W / 2, y: -(topCY), w: INIT_VB_W, h: useH };
       setVb(initVb);
     }
   }, [setVb]);
@@ -167,10 +191,10 @@ export default function SlalomSchematic({
     const sx = curVb.x + (clientX - rect.left) / rect.width  * curVb.w;
     const sy = curVb.y + (clientY - rect.top)  / rect.height * curVb.h;
 
-    // Find nearest buoy in SVG coords (buoy at (def.cx, −def.cy))
+    // Find nearest buoy in SVG coords using the current buoyDefs ref
     const threshold = curVb.w / 5;
     let bestId = null, bestDist = threshold;
-    for (const def of BUOY_DEFS) {
+    for (const def of buoyDefsRef.current) {
       const d = Math.hypot(sx - def.cx, sy - (-def.cy));
       if (d < bestDist) { bestDist = d; bestId = def.id; }
     }
@@ -232,10 +256,14 @@ export default function SlalomSchematic({
             if (!svg) return;
             const { width, height } = svg.getBoundingClientRect();
             const h = INIT_VB_W * ((height || 520) / (width || 360));
-            setVb({ x: -INIT_VB_W / 2, y: -(h * 0.75), w: INIT_VB_W, h });
+            const minCY = Math.min(...buoyDefsRef.current.map(d => d.cy));
+            const topCY   = h * 0.70;
+            const southCY = Math.min(-4, minCY - 4);
+            const useH    = Math.max(h, topCY - southCY);
+            setVb({ x: -INIT_VB_W / 2, y: -topCY, w: INIT_VB_W, h: useH });
           }}>⊡</button>
         <button className="sco-btn" title="Fit full course"
-          onClick={() => setVb(FULL_VB)}>↕</button>
+          onClick={() => setVb(fullVb)}>↕</button>
       </div>
 
       {/* ── Main SVG ─────────────────────────────────────────────── */}
@@ -277,14 +305,17 @@ export default function SlalomSchematic({
         <rect x={-IWWF.G} y={-IWWF.T} width={IWWF.G * 2} height={IWWF.T}
           fill="rgba(234,179,8,0.06)" />
 
-        {/* Gate crossbars */}
-        <line x1={-IWWF.E * 4} y1={0}       x2={IWWF.E * 4} y2={0}
-          stroke="rgba(239,68,68,0.4)" strokeWidth={r * 0.12} />
-        <line x1={-IWWF.E * 4} y1={-IWWF.T} x2={IWWF.E * 4} y2={-IWWF.T}
-          stroke="rgba(239,68,68,0.4)" strokeWidth={r * 0.12} />
+        {/* Gate crossbars — rendered for every distinct gate cy in buoyDefs */}
+        {Array.from(
+          new Set(buoyDefs.filter(d => d.type === 'gate').map(d => d.cy))
+        ).map(gcy => (
+          <line key={gcy}
+            x1={-IWWF.E * 5} y1={-gcy} x2={IWWF.E * 5} y2={-gcy}
+            stroke="rgba(239,68,68,0.3)" strokeWidth={r * 0.1} />
+        ))}
 
         {/* ── Buoys ─────────────────────────────────────────────── */}
-        {BUOY_DEFS.map(def => {
+        {buoyDefs.map(def => {
           const tx = def.cx;         // theoretical SVG x
           const ty = -def.cy;        // theoretical SVG y (flipped)
           const status  = statuses?.[def.id];
@@ -309,6 +340,19 @@ export default function SlalomSchematic({
 
           return (
             <g key={def.id} style={{ pointerEvents: 'none' }}>
+
+              {/* NEW buoy indicator: dashed blue ring */}
+              {def.isNew && (
+                <circle cx={tx} cy={ty} r={r * 2.8}
+                  fill="none" stroke={NEW_RING_COLOR} strokeWidth={r * 0.18}
+                  strokeDasharray={`${r * 0.35} ${r * 0.22}`} opacity="0.65" />
+              )}
+              {/* CHANGED buoy indicator: solid teal ring */}
+              {def.isChanged && (
+                <circle cx={tx} cy={ty} r={r * 2.4}
+                  fill="none" stroke={CHANGED_RING_COLOR} strokeWidth={r * 0.2}
+                  opacity="0.7" />
+              )}
 
               {/* Place mode: dashed target ring for unmeasured buoys */}
               {mode === 'place' && !meas && (
@@ -390,6 +434,19 @@ export default function SlalomSchematic({
                 style={{ pointerEvents: 'none', userSelect: 'none' }}>
                 {def.label}
               </text>
+              {/* NEW/CHANGED annotation */}
+              {(def.isNew || def.isChanged) && (
+                <text
+                  x={def.cx >= 0 ? tx + r * 1.5 : tx - r * 1.5}
+                  y={ty + r * 1.15}
+                  textAnchor={def.cx >= 0 ? 'start' : 'end'}
+                  fontSize={r * 0.58}
+                  fill={def.isNew ? NEW_RING_COLOR : CHANGED_RING_COLOR}
+                  opacity="0.85"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}>
+                  {def.isNew ? '★ new' : '~ mod'}
+                </text>
+              )}
 
             </g>
           );
