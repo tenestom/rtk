@@ -35,6 +35,60 @@ function niceScaleM(vbW) {
   return pick;
 }
 
+/**
+ * For a selected buoy, return up to 4 neighbor defs:
+ *   { kind: 'before'|'after'|'lateral', def: BuoyDef }
+ *
+ * Longitudinal: the single closest buoy at the prev / next distinct cy level.
+ * Lateral:      buoys at exactly the same cy, sorted by proximity, up to 2.
+ */
+function getNeighbors(selDef, buoyDefs) {
+  const CY_TOL = 0.5; // m
+  const sortedCY = [...new Set(buoyDefs.map(d => d.cy))].sort((a, b) => a - b);
+  const selIdx   = (() => {
+    const i = sortedCY.indexOf(selDef.cy);
+    return i !== -1 ? i : sortedCY.findIndex(cy => Math.abs(cy - selDef.cy) < CY_TOL);
+  })();
+
+  const closest = (candidates) =>
+    candidates.length === 0 ? null :
+    candidates.reduce((best, d) => {
+      const dA = Math.hypot(d.cx - selDef.cx, d.cy - selDef.cy);
+      const dB = Math.hypot(best.cx - selDef.cx, best.cy - selDef.cy);
+      return dA < dB ? d : best;
+    });
+
+  const results = [];
+
+  // Longitudinal before
+  if (selIdx > 0) {
+    const prevCy = sortedCY[selIdx - 1];
+    const nb = closest(buoyDefs.filter(d => Math.abs(d.cy - prevCy) < CY_TOL && d.id !== selDef.id));
+    if (nb) results.push({ kind: 'before', def: nb });
+  }
+  // Longitudinal after
+  if (selIdx >= 0 && selIdx < sortedCY.length - 1) {
+    const nextCy = sortedCY[selIdx + 1];
+    const nb = closest(buoyDefs.filter(d => Math.abs(d.cy - nextCy) < CY_TOL && d.id !== selDef.id));
+    if (nb) results.push({ kind: 'after', def: nb });
+  }
+  // Lateral (same cy level, up to 2 nearest)
+  buoyDefs
+    .filter(d => Math.abs(d.cy - selDef.cy) < CY_TOL && d.id !== selDef.id)
+    .sort((a, b) => Math.abs(a.cx - selDef.cx) - Math.abs(b.cx - selDef.cx))
+    .slice(0, 2)
+    .forEach(d => results.push({ kind: 'lateral', def: d }));
+
+  return results;
+}
+
+/** Colour a distance line by deviation from theoretical. */
+function distLineColor(delta) {
+  if (delta < 0.15) return '#22c55e'; // green  < 15 cm
+  if (delta < 0.40) return '#f97316'; // orange < 40 cm
+  return '#ef4444';                   // red    ≥ 40 cm
+}
+
 // ──────────────────────────────────────────────────────────────────────
 export default function SlalomSchematic({
   measured,
@@ -314,6 +368,71 @@ export default function SlalomSchematic({
             stroke="rgba(239,68,68,0.3)" strokeWidth={r * 0.1} />
         ))}
 
+        {/* ── Distance lines: selected + measured buoy → neighbors ── */}
+        {selectedId && measured?.[selectedId] && (() => {
+          const selDef = buoyDefs.find(d => d.id === selectedId);
+          if (!selDef) return null;
+          const neighbors = getNeighbors(selDef, buoyDefs);
+          if (!neighbors.length) return null;
+
+          // Actual course-frame position (measured, else theoretical)
+          const coursePos = (def) => {
+            const e = buoyErrors?.[def.id];
+            return e
+              ? { cx: def.cx + e.dLat, cy: def.cy + e.dLon }
+              : { cx: def.cx,          cy: def.cy };
+          };
+
+          const selCP = coursePos(selDef);
+          const sx = selCP.cx, sy = -selCP.cy;  // SVG coords
+          const sw = r * 0.14;
+          const fz = r * 0.90;
+
+          return neighbors.map(({ kind, def: nDef }) => {
+            const nMeas = !!measured?.[nDef.id];
+            const nCP   = coursePos(nDef);
+            const nx    = nCP.cx, ny = -nCP.cy;
+
+            const measD = Math.hypot(selCP.cx - nCP.cx, selCP.cy - nCP.cy);
+            const theoD = Math.hypot(selDef.cx - nDef.cx, selDef.cy - nDef.cy);
+            const delta = Math.abs(measD - theoD);
+
+            const color = nMeas ? distLineColor(delta) : '#475569';
+            const label = nMeas
+              ? `${measD.toFixed(2)} m`
+              : `~${theoD.toFixed(1)} m`;
+
+            // Label pivot at midpoint; angle follows line direction
+            const lmx = (sx + nx) / 2;
+            const lmy = (sy + ny) / 2;
+            let ang = Math.atan2(ny - sy, nx - sx) * 180 / Math.PI;
+            if (ang > 90)  ang -= 180;
+            if (ang < -90) ang += 180;
+
+            const pw = fz * 4.6;
+            const ph = fz * 1.45;
+
+            return (
+              <g key={`dist-${kind}-${nDef.id}`} style={{ pointerEvents: 'none' }}>
+                <line x1={sx} y1={sy} x2={nx} y2={ny}
+                  stroke={color} strokeWidth={sw}
+                  strokeDasharray={`${r * 0.55} ${r * 0.28}`}
+                  opacity={nMeas ? 0.88 : 0.45} />
+                <g transform={`translate(${lmx},${lmy}) rotate(${ang})`}>
+                  <rect x={-pw / 2} y={-ph / 2} width={pw} height={ph}
+                    rx={ph * 0.35} fill="rgba(6,12,26,0.88)"
+                    stroke={color} strokeWidth={r * 0.06} />
+                  <text textAnchor="middle" dominantBaseline="middle"
+                    fontSize={fz} fill={color} fontWeight="700"
+                    style={{ userSelect: 'none' }}>
+                    {label}
+                  </text>
+                </g>
+              </g>
+            );
+          });
+        })()}
+
         {/* ── Buoys ─────────────────────────────────────────────── */}
         {buoyDefs.map(def => {
           const tx = def.cx;         // theoretical SVG x
@@ -425,22 +544,22 @@ export default function SlalomSchematic({
 
               {/* Label */}
               <text
-                x={def.cx >= 0 ? tx + r * 1.5 : tx - r * 1.5}
+                x={def.cx >= 0 ? tx + r * 2.0 : tx - r * 2.0}
                 y={ty}
                 textAnchor={def.cx >= 0 ? 'start' : 'end'}
                 dominantBaseline="middle"
-                fontSize={r * 0.82}
-                fill="rgba(255,255,255,0.42)"
+                fontSize={r * 1.55}
+                fill="rgba(255,255,255,0.70)"
                 style={{ pointerEvents: 'none', userSelect: 'none' }}>
                 {def.label}
               </text>
               {/* NEW/CHANGED annotation */}
               {(def.isNew || def.isChanged) && (
                 <text
-                  x={def.cx >= 0 ? tx + r * 1.5 : tx - r * 1.5}
-                  y={ty + r * 1.15}
+                  x={def.cx >= 0 ? tx + r * 2.0 : tx - r * 2.0}
+                  y={ty + r * 1.7}
                   textAnchor={def.cx >= 0 ? 'start' : 'end'}
-                  fontSize={r * 0.58}
+                  fontSize={r * 0.72}
                   fill={def.isNew ? NEW_RING_COLOR : CHANGED_RING_COLOR}
                   opacity="0.85"
                   style={{ pointerEvents: 'none', userSelect: 'none' }}>
