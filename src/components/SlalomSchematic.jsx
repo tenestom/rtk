@@ -18,8 +18,7 @@ import { BUOY_DEFS, IWWF } from '../utils/slalom.js';
 
 // ── Constants ──────────────────────────────────────────────────────────
 const INIT_VB_W = 28;          // metres, initial lateral span (±14m)
-const ARROW_SCALE = 10;        // 1 cm error → 0.1 m arrow; 10 cm → 1 m arrow
-const MIN_ARROW_M = 0.02;      // suppress arrows < 2 cm error
+const MIN_ARROW_M = 0.02;      // suppress correction arrows < 2 cm error
 const STATUS_COLOR = { ok: '#22c55e', warn: '#f97316', bad: '#ef4444' };
 
 // Colour constants for isNew / isChanged rings
@@ -329,11 +328,12 @@ export default function SlalomSchematic({
         onClick={handleClick}
         style={{ touchAction: 'none', userSelect: 'none', display: 'block', width: '100%', cursor: 'crosshair' }}
       >
-        {/* ── Arrowhead marker for error arrows ─────────────────── */}
+        {/* ── Arrowhead markers ───────────────────────────────────────── */}
         <defs>
-          <marker id="slm-arrow" markerWidth="5" markerHeight="4"
-            refX="5" refY="2" orient="auto" markerUnits="strokeWidth">
-            <polygon points="0 0, 5 2, 0 4" fill="#f97316" />
+          {/* Correction-direction arrow: bright lime */}
+          <marker id="slm-corr" markerWidth="6" markerHeight="5"
+            refX="6" refY="2.5" orient="auto" markerUnits="strokeWidth">
+            <polygon points="0 0, 6 2.5, 0 5" fill="#a3e635" />
           </marker>
         </defs>
 
@@ -495,22 +495,72 @@ export default function SlalomSchematic({
                   strokeDasharray={`${r * 0.45} ${r * 0.25}`} opacity="0.5" />
               )}
 
-              {/* Error arrows (longitudinal + lateral) */}
+              {/* Correction arrows: FROM measured buoy TOWARD theoretical position */}
               {isBad && hasMeasPos && (() => {
-                const lon = err.dLon; // positive = too far north
-                const lat = err.dLat; // positive = too far right
-                const sw  = r * 0.22;
+                // lon = how far buoy IS from theoretical along course (+ = too far north)
+                // lat = how far buoy IS from theoretical laterally  (+ = too far right)
+                // Correction = negate: move buoy BACK toward theoretical
+                const lon = err.dLon;  // metres
+                const lat = err.dLat;  // metres
+                const sw  = r * 0.28;
+                const fz  = r * 1.0;
+                const labelBg = 'rgba(6,12,26,0.88)';
+
+                // Vertical (longitudinal) correction arrow
+                const lonCm   = Math.round(Math.abs(lon) * 100);
+                // Arrow: measured → theoretical in SVG-y direction
+                // SVG y is flipped: positive cy = north = negative SVG-y
+                // If lon>0 buoy is too far north (SVG-y too negative), correction is south (+SVG-y)
+                const lonEnd  = { x: bx,        y: by + lon }; // = ty (theoretical)
+                const lonMidY = (by + lonEnd.y) / 2;
+
+                // Horizontal (lateral) correction arrow
+                const latCm   = Math.round(Math.abs(lat) * 100);
+                // If lat>0 buoy is too far right (SVG-x too positive), correction is left (-SVG-x)
+                const latEnd  = { x: bx - lat,  y: by };       // = tx (theoretical)
+                const latMidX = (bx + latEnd.x) / 2;
+
+                const corrColor = '#a3e635'; // lime green — clearly visible
+
                 return (
                   <>
-                    {Math.abs(lon) > MIN_ARROW_M && (
-                      <line x1={bx} y1={by} x2={bx} y2={by - lon * ARROW_SCALE}
-                        stroke="#f97316" strokeWidth={sw}
-                        markerEnd="url(#slm-arrow)" />
+                    {/* Longitudinal correction arrow */}
+                    {lonCm > Math.round(MIN_ARROW_M * 100) && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <line x1={bx} y1={by} x2={lonEnd.x} y2={lonEnd.y}
+                          stroke={corrColor} strokeWidth={sw}
+                          markerEnd="url(#slm-corr)" />
+                        {/* cm label beside arrow midpoint */}
+                        <g transform={`translate(${bx + r * 1.8}, ${lonMidY})`}>
+                          <rect x={-fz * 0.3} y={-fz * 0.75} width={fz * 3.2} height={fz * 1.5}
+                            rx={fz * 0.3} fill={labelBg}
+                            stroke={corrColor} strokeWidth={r * 0.05} />
+                          <text textAnchor="middle" dominantBaseline="middle"
+                            x={fz * 1.3} fontSize={fz} fill={corrColor} fontWeight="800"
+                            style={{ userSelect: 'none' }}>
+                            {lonCm} cm
+                          </text>
+                        </g>
+                      </g>
                     )}
-                    {Math.abs(lat) > MIN_ARROW_M && (
-                      <line x1={bx} y1={by} x2={bx + lat * ARROW_SCALE} y2={by}
-                        stroke="#f97316" strokeWidth={sw}
-                        markerEnd="url(#slm-arrow)" />
+                    {/* Lateral correction arrow */}
+                    {latCm > Math.round(MIN_ARROW_M * 100) && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <line x1={bx} y1={by} x2={latEnd.x} y2={latEnd.y}
+                          stroke={corrColor} strokeWidth={sw}
+                          markerEnd="url(#slm-corr)" />
+                        {/* cm label above arrow midpoint */}
+                        <g transform={`translate(${latMidX}, ${by - r * 2.0})`}>
+                          <rect x={-fz * 1.6} y={-fz * 0.75} width={fz * 3.2} height={fz * 1.5}
+                            rx={fz * 0.3} fill={labelBg}
+                            stroke={corrColor} strokeWidth={r * 0.05} />
+                          <text textAnchor="middle" dominantBaseline="middle"
+                            fontSize={fz} fill={corrColor} fontWeight="800"
+                            style={{ userSelect: 'none' }}>
+                            {latCm} cm
+                          </text>
+                        </g>
+                      </g>
                     )}
                   </>
                 );
