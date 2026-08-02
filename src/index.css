@@ -1614,6 +1614,57 @@ body {
 }
 .sc-btn--resume:hover { background: rgba(34,197,94,0.22); }
 
+.sc-btn--continue {
+  background: rgba(34,197,94,0.15);
+  border-color: rgba(34,197,94,0.35);
+  color: #4ade80;
+  font-weight: 700;
+}
+.sc-btn--continue:hover { background: rgba(34,197,94,0.28); }
+
+/* ── Continuation mode banner ─────────────────────────────────────── */
+.slalom-continue-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  background: rgba(34,197,94,0.08);
+  border-bottom: 1px solid rgba(34,197,94,0.25);
+  flex-shrink: 0;
+}
+
+.scb-icon {
+  font-size: 0.7rem;
+  color: #4ade80;
+  flex-shrink: 0;
+}
+
+.scb-text {
+  font-size: 0.72rem;
+  color: #4ade80;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scb-text strong { font-weight: 800; color: #86efac; }
+
+.scb-abandon {
+  font-size: 1rem;
+  line-height: 1;
+  color: rgba(74,222,128,0.6);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.scb-abandon:hover { color: #f87171; background: rgba(239,68,68,0.1); }
+
+
 /* ── Modal overlay ───────────────────────────────────────────────── */
 .sweep-modal-overlay {
   position: fixed;

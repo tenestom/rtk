@@ -52,6 +52,8 @@ export default function SlalomSurvey({ data, onBack }) {
   // Save dialog
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [courseName,     setCourseName]     = useState('');
+  // When continuing a saved course, holds its id so confirmSave() overwrites it
+  const [continuingCourseId, setContinuingCourseId] = useState(null);
 
   // Saved courses
   const [savedCourses, setSavedCourses] = useState(loadSaved);
@@ -215,7 +217,7 @@ export default function SlalomSurvey({ data, onBack }) {
 
   function confirmSave() {
     const entry = {
-      id:         `slalom_${Date.now()}`,
+      id:         continuingCourseId ?? `slalom_${Date.now()}`,
       name:       courseName.trim() || `Course ${new Date().toLocaleDateString()}`,
       date:       new Date().toISOString(),
       measured,
@@ -226,16 +228,40 @@ export default function SlalomSurvey({ data, onBack }) {
       totalBuoys,
       courseType,
     };
-    const all = [entry, ...loadSaved()];
+    const existing = loadSaved();
+    const all = continuingCourseId
+      ? existing.map(c => c.id === continuingCourseId ? entry : c)  // overwrite
+      : [entry, ...existing];                                        // prepend new
     storeSaved(all);
     setSavedCourses(all);
     setShowSaveDialog(false);
+    setContinuingCourseId(null);
   }
   function deleteCourseSaved(id) {
     const filtered = savedCourses.filter(c => c.id !== id);
     storeSaved(filtered);
     setSavedCourses(filtered);
     if (viewingCourse?.id === id) setViewingCourse(null);
+    if (continuingCourseId === id) setContinuingCourseId(null);
+  }
+
+  // Load a saved course back into the active session so the user can continue
+  function continueSurvey(sw) {
+    const hasData = Object.keys(sw.measured ?? {}).length > 0 || (sw.pois ?? []).length > 0;
+    if ((Object.keys(measured).length > 0 || pois.length > 0) && hasData) {
+      // eslint-disable-next-line no-alert
+      if (!window.confirm('This will replace your current unsaved measurements. Continue?')) return;
+    }
+    setMeasured(sw.measured ?? {});
+    setPosRefId(sw.posRefId ?? 1);
+    setAngleRefId(sw.angleRefId ?? 23);
+    setPois(sw.pois ?? []);
+    setCourseType(sw.courseType ?? '6');
+    setSelectedId(null);
+    setSelectedPoi(null);
+    setDistSel([null, null]);
+    setContinuingCourseId(sw.id);
+    setTab('survey');
   }
 
   // ── Distance selection handler ─────────────────────────────────────────
@@ -381,6 +407,19 @@ export default function SlalomSurvey({ data, onBack }) {
               </div>
             </div>
 
+            {/* Continuation mode banner */}
+            {continuingCourseId && (() => {
+              const name = savedCourses.find(c => c.id === continuingCourseId)?.name;
+              return (
+                <div className="slalom-continue-banner">
+                  <span className="scb-icon">▶</span>
+                  <span className="scb-text">Continuing: <strong>{name}</strong></span>
+                  <button className="scb-abandon" title="Abandon continuation (keep data as new)"
+                    onClick={() => setContinuingCourseId(null)}>×</button>
+                </div>
+              );
+            })()}
+
             {/* Tab bar */}
             <div className="tab-bar">
               {['survey','results','saved'].map(t => (
@@ -514,8 +553,15 @@ export default function SlalomSurvey({ data, onBack }) {
                     📏 Measure
                   </button>
                   <button className="btn-ctx-action" style={{ marginLeft:'auto' }}
-                    onClick={() => { setCourseName(`Course ${new Date().toLocaleDateString()}`); setShowSaveDialog(true); }}
-                    disabled={measuredCount === 0}>💾 Save</button>
+                    onClick={() => {
+                      setCourseName(continuingCourseId
+                        ? (savedCourses.find(c => c.id === continuingCourseId)?.name ?? `Course ${new Date().toLocaleDateString()}`)
+                        : `Course ${new Date().toLocaleDateString()}`);
+                      setShowSaveDialog(true);
+                    }}
+                    disabled={measuredCount === 0}>
+                    {continuingCourseId ? '💾 Update' : '💾 Save'}
+                  </button>
                   <button className="btn-ctx-action btn-ctx-action--clear"
                     onClick={clearSession}
                     disabled={measuredCount === 0 && pois.length === 0}>✕ Clear</button>
@@ -685,6 +731,8 @@ export default function SlalomSurvey({ data, onBack }) {
                       </span>
                     </div>
                     <div className="sc-actions">
+                      <button className="sc-btn sc-btn--continue"
+                        onClick={() => continueSurvey(sw)}>▶ Continue</button>
                       <button className="sc-btn sc-btn--view"
                         onClick={() => { setViewingCourse(sw); setTab('survey'); }}>View</button>
                       <button className="sc-btn sc-btn--del"
@@ -722,16 +770,20 @@ export default function SlalomSurvey({ data, onBack }) {
       {showSaveDialog && (
         <div className="sweep-modal-overlay">
           <div className="sweep-modal">
-            <h3 className="sm-title">💾 Save Course Survey</h3>
+            <h3 className="sm-title">
+              {continuingCourseId ? '💾 Update Course Survey' : '💾 Save Course Survey'}
+            </h3>
             <div className="sm-stats">
-              <span>{measuredCount}/26 buoys</span>
+              <span>{measuredCount}/{totalBuoys} buoys</span>
               <span>{pois.length} POI{pois.length!==1?'s':''}</span>
             </div>
             <label className="sm-label">Course name</label>
             <input id="input-course-name" type="text" className="sm-input"
               value={courseName} onChange={e => setCourseName(e.target.value)} autoFocus />
             <div className="sm-actions">
-              <button className="sm-btn sm-btn--save" onClick={confirmSave}>Save</button>
+              <button className="sm-btn sm-btn--save" onClick={confirmSave}>
+                {continuingCourseId ? 'Update' : 'Save'}
+              </button>
               <button className="sm-btn sm-btn--cancel" onClick={() => setShowSaveDialog(false)}>Cancel</button>
             </div>
           </div>
