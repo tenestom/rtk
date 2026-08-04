@@ -537,6 +537,42 @@ body {
   font-size: 0.65rem;
 }
 
+/* ── Fix quality history row ─────────────────────────────────────── */
+.sb-fix-history {
+  margin-top: 5px;
+  gap: 6px;
+  align-items: center;
+}
+
+.sb-fh-label {
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sb-fh-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sb-fh-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.sb-fh-dot--empty {
+  background: transparent;
+  border: 1px solid rgba(100,116,139,0.3);
+}
+
 /* ── Home Screen ─────────────────────────────────────────────────── */
 .home-screen {
   padding: 28px 16px 32px;
