@@ -2,7 +2,7 @@ import ConnectionBadge from './ConnectionBadge';
 import CoordinatesCard from './CoordinatesCard';
 import FixQualityCard from './FixQualityCard';
 import SatelliteCard from './SatelliteCard';
-import BatteryIndicator from './BatteryIndicator';
+import NmeaErrorCard from './NmeaErrorCard';
 import MixedContentBanner from './MixedContentBanner';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -37,8 +37,8 @@ export default function GpsDashboard() {
           <SatelliteCard sats={data?.sats} />
         </div>
 
-        {/* Battery */}
-        <BatteryIndicator bat={data?.bat} />
+        {/* NMEA error rate (replaces battery) */}
+        <NmeaErrorCard err={data?.err} />
       </main>
 
       {/* Footer timestamp */}

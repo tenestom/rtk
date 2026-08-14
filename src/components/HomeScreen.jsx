@@ -60,6 +60,22 @@ export default function HomeScreen({ onNavigate }) {
           <span className="feature-btn-arrow">›</span>
         </button>
 
+        {/* ── Raw Data Log ──────────────────────────────────────── */}
+        <button
+          id="btn-feature-raw"
+          className="feature-btn feature-btn--secondary"
+          onClick={() => onNavigate('raw')}
+        >
+          <span className="feature-btn-icon">📋</span>
+          <div className="feature-btn-body">
+            <span className="feature-btn-title">Raw Data Log</span>
+            <span className="feature-btn-desc">
+              View live WebSocket JSON frames from the RTK module
+            </span>
+          </div>
+          <span className="feature-btn-arrow">›</span>
+        </button>
+
       </div>
     </div>
   );

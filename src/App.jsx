@@ -7,12 +7,14 @@ import HomeScreen from './components/HomeScreen';
 import DistanceMeasure from './components/DistanceMeasure';
 import SlalomSurvey from './components/SlalomSurvey';
 import SweepScreen from './components/SweepScreen';
+import RawDataTab from './components/RawDataTab';
 
 /**
  * Root component.
  * Owns the WebSocket connection (lifted from GpsDashboard) so that:
  *   - StatusBar always has live signal data
  *   - Feature screens receive GPS data as props
+ *   - RawDataTab can log every incoming frame
  */
 function App() {
   const { status, data } = useWebSocket();
@@ -48,6 +50,15 @@ function App() {
             data={data}
             onBack={() => setScreen('home')}
           />
+        )}
+        {screen === 'raw' && (
+          <div className="raw-screen">
+            <div className="screen-nav">
+              <button className="nav-back" onClick={() => setScreen('home')}>← Back</button>
+              <span className="screen-nav-title">Raw Data</span>
+            </div>
+            <RawDataTab data={data} status={status} />
+          </div>
         )}
       </div>
     </div>
