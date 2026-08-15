@@ -1479,7 +1479,7 @@ body {
   border-color: rgba(59,130,246,0.3);
   color: #60a5fa;
 }
-.sweep-btn--primary:hover:not(:disabled) { background: rgba(59,130,246,0.2); }
+.sweep-btn--primary:hover:not(:disabled) { background: #eff6ff; color: #1d4ed8; }
 
 .sweep-btn--ghost {
   background: var(--surface);
@@ -1696,7 +1696,7 @@ body {
 .sweep-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,0.45);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: flex-end;
@@ -2995,4 +2995,101 @@ body {
 }
 
 .raw-tab-overflow { color: var(--amber); }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   FULL WHITE BACKGROUND — OUTDOOR MODE OVERRIDES
+   Ensure every surface is white or near-white for maximum readability
+   in bright sunlight. Applied after all component styles.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* All cards and panels → white */
+.card,
+.feature-btn,
+.results-panel,
+.slalom-progress,
+.slalom-action-bar,
+.slalom-schematic-wrap,
+.sweep-map-wrap,
+.coord-view,
+.live-pos-strip,
+.place-guidance-panel,
+.slalom-outer-frame,
+.slalom-outer-frame .tab-bar,
+.raw-tab,
+.raw-tab-toolbar,
+.raw-tab-footer,
+.screen-content {
+  background: #ffffff;
+}
+
+/* Surface-level panels (slightly off-white) */
+.slalom-mode-toggle,
+.slalom-course-type-bar,
+.home-screen,
+.tab-bar,
+.screen-nav,
+.raw-tab-log {
+  background: #f8f9fa;
+}
+
+/* Make sure body & app shell are white */
+body,
+.app-shell,
+.slalom-screen,
+.slalom-inner-zone {
+  background: #ffffff;
+}
+
+/* Status bar - slightly off-white with border */
+.status-bar {
+  background: #f8f9fa;
+  border-bottom: 1px solid rgba(0,0,0,0.12);
+}
+
+/* Modal backdrop - keep semi-dark for focus */
+.sweep-modal-overlay {
+  background: rgba(0,0,0,0.45);
+}
+
+/* Tab active state on white background */
+.tab-btn--active,
+.tab-btn.active {
+  background: #ffffff;
+  color: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+/* Ensure all SVG containers inherit white */
+.slalom-schematic-wrap svg,
+.sweep-map-wrap svg,
+.coord-view svg {
+  background: #ffffff;
+}
+
+/* Schematic/sweep empty states */
+.coord-view-empty,
+.sweep-map-empty,
+.slalom-schematic-wrap .empty-state {
+  background: #ffffff;
+  color: #6b7280;
+}
+
+/* Active sctb button - visible on white */
+.sctb-btn--active {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: rgba(29,78,216,0.4);
+}
+
+/* Non-active sctb button label color */
+.sctb-btn { color: #4b5563; }
+.sctb-label { color: #6b7280; }
+
+/* Slalom results list background */
+.results-scroll,
+.slalom-results-tab { background: #ffffff; }
+
+/* Dist mode status */
+.slalom-dist-status { background: #ffffff; }
 

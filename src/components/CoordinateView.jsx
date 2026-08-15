@@ -142,12 +142,12 @@ export default function CoordinateView({
       <svg viewBox={`0 0 ${W} ${H}`} className="coord-view-svg" aria-label="Coordinate map">
 
         {/* Background */}
-        <rect width={W} height={H} fill="#080d1a" rx="14" />
+        <rect width={W} height={H} fill="#ffffff" rx="14" />
 
         {/* Grid */}
         {gridLines.map(l => (
           <line key={l.key} x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-            stroke="rgba(99,179,237,0.06)" strokeWidth="1" />
+            stroke="rgba(0,0,0,0.10)" strokeWidth="1" />
         ))}
 
         {/* ── Triangle mode ── */}
@@ -164,11 +164,11 @@ export default function CoordinateView({
             return (
               <g>
                 <rect x={x - w/2} y={y - 9} width={w} height={16} rx="4"
-                  fill="rgba(15,24,41,0.88)" />
+                  fill="rgba(255,255,255,0.92)" />
                 <text x={x} y={y+1} textAnchor="middle" dominantBaseline="middle"
                   fontSize="10" fontWeight="600"
                   fontFamily="-apple-system,BlinkMacSystemFont,sans-serif"
-                  fill="#cbd5e1">{text}</text>
+                  fill="#1a1a1a">{text}</text>
               </g>
             );
           }
@@ -228,11 +228,11 @@ export default function CoordinateView({
               {distance != null && (
                 <>
                   <rect x={lab.x-28} y={lab.y-9} width="56" height="16" rx="4"
-                    fill="rgba(15,24,41,0.85)" />
+                    fill="rgba(255,255,255,0.92)" />
                   <text x={lab.x} y={lab.y+1} textAnchor="middle" dominantBaseline="middle"
                     fontSize="10" fontWeight="600"
                     fontFamily="-apple-system,BlinkMacSystemFont,sans-serif"
-                    fill="#cbd5e1">
+                    fill="#1a1a1a">
                     {formatMetersShort(distance)}
                   </text>
                 </>

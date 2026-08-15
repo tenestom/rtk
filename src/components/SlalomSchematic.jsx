@@ -333,31 +333,31 @@ export default function SlalomSchematic({
           {/* Correction-direction arrow: bright lime */}
           <marker id="slm-corr" markerWidth="6" markerHeight="5"
             refX="6" refY="2.5" orient="auto" markerUnits="strokeWidth">
-            <polygon points="0 0, 6 2.5, 0 5" fill="#a3e635" />
+            <polygon points="0 0, 6 2.5, 0 5" fill="#2563eb" />
           </marker>
         </defs>
 
         {/* ── Background ────────────────────────────────────────── */}
-        <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#060c1a" />
+        <rect x={vb.x} y={vb.y} width={vb.w} height={vb.h} fill="#ffffff" />
 
         {/* Course rectangle (entry gate to exit gate) */}
         <rect x={vb.x} y={-IWWF.T} width={vb.w} height={IWWF.T}
-          fill="rgba(59,130,246,0.04)" />
+          fill="rgba(59,130,246,0.06)" />
 
         {/* Pre-gate zones */}
         <rect x={vb.x} y={0}       width={vb.w} height={IWWF.H}
-          fill="rgba(34,197,94,0.03)" />
+          fill="rgba(34,197,94,0.05)" />
         <rect x={vb.x} y={-IWWF.T - IWWF.H} width={vb.w} height={IWWF.H}
-          fill="rgba(34,197,94,0.03)" />
+          fill="rgba(34,197,94,0.05)" />
 
         {/* Centreline */}
         <line x1={0} y1={vb.y} x2={0} y2={vb.y + vb.h}
-          stroke="rgba(148,163,184,0.12)" strokeWidth={r * 0.15}
+          stroke="rgba(0,0,0,0.15)" strokeWidth={r * 0.15}
           strokeDasharray={`${r * 0.8} ${r * 0.4}`} />
 
         {/* Boat channel corridor */}
         <rect x={-IWWF.G} y={-IWWF.T} width={IWWF.G * 2} height={IWWF.T}
-          fill="rgba(234,179,8,0.06)" />
+          fill="rgba(234,179,8,0.08)" />
 
         {/* Gate crossbars — rendered for every distinct gate cy in buoyDefs */}
         {Array.from(
@@ -365,7 +365,7 @@ export default function SlalomSchematic({
         ).map(gcy => (
           <line key={gcy}
             x1={-IWWF.E * 5} y1={-gcy} x2={IWWF.E * 5} y2={-gcy}
-            stroke="rgba(239,68,68,0.3)" strokeWidth={r * 0.1} />
+            stroke="rgba(239,68,68,0.5)" strokeWidth={r * 0.1} />
         ))}
 
         {/* ── Distance lines: selected + measured buoy → neighbors ── */}
@@ -420,7 +420,7 @@ export default function SlalomSchematic({
                   opacity={nMeas ? 0.88 : 0.45} />
                 <g transform={`translate(${lmx},${lmy}) rotate(${ang})`}>
                   <rect x={-pw / 2} y={-ph / 2} width={pw} height={ph}
-                    rx={ph * 0.35} fill="rgba(6,12,26,0.88)"
+                    rx={ph * 0.35} fill="rgba(255,255,255,0.92)"
                     stroke={color} strokeWidth={r * 0.06} />
                   <text textAnchor="middle" dominantBaseline="middle"
                     fontSize={fz} fill={color} fontWeight="700"
@@ -504,7 +504,7 @@ export default function SlalomSchematic({
                 const lat = err.dLat;  // metres
                 const sw  = r * 0.28;
                 const fz  = r * 1.0;
-                const labelBg = 'rgba(6,12,26,0.88)';
+                const labelBg = 'rgba(255,255,255,0.92)';
 
                 // Vertical (longitudinal) correction arrow
                 const lonCm   = Math.round(Math.abs(lon) * 100);
@@ -520,7 +520,7 @@ export default function SlalomSchematic({
                 const latEnd  = { x: bx - lat,  y: by };       // = tx (theoretical)
                 const latMidX = (bx + latEnd.x) / 2;
 
-                const corrColor = '#a3e635'; // lime green — clearly visible
+                const corrColor = '#2563eb'; // blue - clearly visible on white
 
                 return (
                   <>
@@ -573,7 +573,7 @@ export default function SlalomSchematic({
                   stroke="#0a0f1e" strokeWidth={r * 0.18} />
               ) : (
                 <circle cx={tx} cy={ty} r={r}
-                  fill="rgba(10,15,30,0.55)" stroke={def.color}
+                  fill="rgba(200,210,220,0.55)" stroke={def.color}
                   strokeWidth={r * 0.18} opacity={mode === 'place' ? 0.7 : 0.38} />
               )}
 
@@ -599,7 +599,7 @@ export default function SlalomSchematic({
                 textAnchor={def.cx >= 0 ? 'start' : 'end'}
                 dominantBaseline="middle"
                 fontSize={r * 1.55}
-                fill="rgba(255,255,255,0.70)"
+                fill="rgba(0,0,0,0.75)"
                 style={{ pointerEvents: 'none', userSelect: 'none' }}>
                 {def.label}
               </text>

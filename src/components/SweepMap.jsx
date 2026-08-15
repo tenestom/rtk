@@ -72,7 +72,7 @@ export default function SweepMap({
       <svg viewBox={`0 0 ${W} ${H}`} className="sweep-map-svg">
 
         {/* Background */}
-        <rect width={W} height={H} fill="#080d1a" rx="12" />
+        <rect width={W} height={H} fill="#ffffff" rx="12" />
 
         {/* Subtle grid */}
         {[1,2,3].map(i => (
